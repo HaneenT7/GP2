@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "585077968144",
+    "project_id": "gp2-watad",
+    "storage_bucket": "gp2-watad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:585077968144:android:fc613c4a8cab17387fe995",
+        "android_client_info": {
+          "package_name": "com.example.gp2_watad"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDAaLpQDeNM8PrzPSPzF305mkSVl0CHVZE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

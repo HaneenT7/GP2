@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'Dashboard.dart';
 import 'signUp.dart';
+import 'reset_password.dart';
 
 class SignInPage extends StatefulWidget {
   @override
@@ -158,12 +159,12 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                 ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     SizedBox(height: 60),
                     Text(
                       "Welcome back\nto Watad",
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.left,
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -173,7 +174,7 @@ class _SignInPageState extends State<SignInPage> {
                     SizedBox(height: 20),
                     Text(
                       "We've missed your study energy! Let's review together again!",
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.left,
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white70,
@@ -218,7 +219,6 @@ class _SignInPageState extends State<SignInPage> {
 
           _buildPasswordField(),
           const SizedBox(height: 28),
-
           _buildSignInButton(),
 
           const SizedBox(height: 20),
@@ -236,6 +236,17 @@ class _SignInPageState extends State<SignInPage> {
                 child: const Text("Sign Up"),
               ),
             ],
+          ),
+          Center(
+            child: TextButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (context) => const ResetPasswordPage()),
+                );
+              },
+              child: const Text('Forgot password?'),
+            ),
           ),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'widgets/custom_sidebar.dart';
 import 'pages/course_folders_page.dart';
+import 'RevPlanPage.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -28,7 +29,7 @@ class _DashBoardState extends State<DashBoard> {
       case 0:
         return _buildDashboardContent();
       case 1:
-        return const Center(child: Text("Revision Plan Content"));
+        return const RevPlanPage();
       case 2:
         return const Center(child: Text("Snaps Board Content"));
       case 3:

@@ -16,22 +16,13 @@ class _RevPlanPageState extends State<StatefulWidget> {
     return Scaffold(
       backgroundColor: Colors.white,
 
-      body: Row(
-        children: [
-          CustomSidebar(
-            selectedIndex: _selectedIndex,
-            onItemSelected: (index) {
-              setState(() => _selectedIndex = index);
-            }, //todo: logic
-          ),
-          Expanded(
-            child: _isSetupMode
-            ?SetUpRevPlan(
-      onClose: () {
-        setState(() => _isSetupMode = false);
-      },
-    )
-            :Column(
+      body: _isSetupMode
+          ? SetUpRevPlan(
+              onClose: () {
+                setState(() => _isSetupMode = false);
+              },
+            )
+          : Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -89,9 +80,6 @@ class _RevPlanPageState extends State<StatefulWidget> {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

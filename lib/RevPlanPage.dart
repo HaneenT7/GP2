@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'SetUpRevPlan.dart';
-import 'widgets/custom_sidebar.dart';
 
 class RevPlanPage extends StatefulWidget {
   const RevPlanPage({super.key});

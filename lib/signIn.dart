@@ -49,8 +49,9 @@ class _SignInPageState extends State<SignInPage> {
 
       // Navigate to Dashboard
       if (mounted) {
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => DashBoard()),
+          (route) => false,
         );
       }
     } on FirebaseAuthException catch (e) {

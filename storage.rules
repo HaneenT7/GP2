@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Snaps: authenticated users can upload/read/delete their files
+    match /snaps/{boardName}/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

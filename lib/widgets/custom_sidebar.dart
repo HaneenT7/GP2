@@ -35,15 +35,7 @@ class CustomSidebar extends StatelessWidget {
     return Container(
       width: sidebarWidth,
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF6B46C1), // Purple 600
-            Color(0xFF553C9A), // Purple 700
-            Color(0xFF4C1D95), // Purple 800
-          ],
-        ),
+        color: Color(0xFF6A4E88), // Same muted purple as Snaps Board header
       ),
       child: Column(
         children: [
@@ -69,7 +61,7 @@ class CustomSidebar extends StatelessWidget {
                           width: logoSize,
                           height: logoSize,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                            color: const Color(0xFF6A4E88).withOpacity(0.5),
                             borderRadius: BorderRadius.circular(logoBorderRadius),
                           ),
                           child: Icon(
@@ -120,16 +112,16 @@ class CustomSidebar extends StatelessWidget {
           padding: EdgeInsets.all(padding),
           decoration: BoxDecoration(
             color: isSelected 
-                ? const Color(0xFF60A5FA).withOpacity(0.3) // Light blue when selected
+                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(padding),
             border: isSelected 
-                ? Border.all(color: const Color(0xFF60A5FA), width: 1)
+                ? Border.all(color: const Color(0xFF3399FF), width: 1)
                 : null,
           ),
           child: Icon(
             icon,
-            color: isSelected ? const Color(0xFF60A5FA) : Colors.white70,
+            color: isSelected ? const Color(0xFF3399FF) : Colors.white70,
             size: iconSize,
           ),
         ),
@@ -149,18 +141,18 @@ class CustomSidebar extends StatelessWidget {
           padding: EdgeInsets.all(padding),
           decoration: BoxDecoration(
             color: isSelected 
-                ? const Color(0xFF60A5FA).withOpacity(0.3) // Light blue when selected
+                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(padding),
             border: isSelected 
-                ? Border.all(color: const Color(0xFF60A5FA), width: 1)
+                ? Border.all(color: const Color(0xFF3399FF), width: 1)
                 : null,
           ),
           child: Transform.rotate(
             angle: 0.9, // Rotate about 17 degrees clockwise to match the photo
             child: Icon(
               icon,
-              color: isSelected ? const Color(0xFF60A5FA) : Colors.white70,
+              color: isSelected ? const Color(0xFF3399FF) : Colors.white70,
               size: iconSize,
             ),
           ),
@@ -171,7 +163,7 @@ class CustomSidebar extends StatelessWidget {
 
   Widget _buildPenAndBookNavItem(int index, String tooltip, double iconSize, double padding, double margin) {
     final isSelected = selectedIndex == index;
-    final color = isSelected ? const Color(0xFF60A5FA) : Colors.white70;
+    final color = isSelected ? const Color(0xFF3399FF) : Colors.white70;
     
     return Tooltip(
       message: tooltip,
@@ -182,11 +174,11 @@ class CustomSidebar extends StatelessWidget {
           padding: EdgeInsets.all(padding),
           decoration: BoxDecoration(
             color: isSelected 
-                ? const Color(0xFF60A5FA).withOpacity(0.3) // Light blue when selected
+                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(padding),
             border: isSelected 
-                ? Border.all(color: const Color(0xFF60A5FA), width: 1)
+                ? Border.all(color: const Color(0xFF3399FF), width: 1)
                 : null,
           ),
           child: SizedBox(

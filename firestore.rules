@@ -1,0 +1,41 @@
+// Deploy: Firebase Console → Firestore → Rules → Publish (or: firebase deploy --only firestore:rules)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ----- Snaps Board: users can read/write only their own boards and snaps -----
+    match /users/{userId}/boards/{boardId}/snaps/{snapId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/boards/{boardId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ----- Students: users can create and read their own document -----
+    match /students/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ----- Course folders: each student can only access their own folders -----
+    match /courseFolders/{folderId} {
+      allow read, update, delete: if request.auth != null
+        && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
+    }
+
+    // ----- Files inside folders: student can only access files in their own folders -----
+    match /folderFiles/{fileId} {
+      function isOwnerOfFolder(folderId) {
+        return request.auth != null &&
+          get(/databases/$(database)/documents/courseFolders/$(folderId))
+            .data.userId == request.auth.uid;
+      }
+      allow read, update, delete: if isOwnerOfFolder(resource.data.folderId);
+      allow create: if isOwnerOfFolder(request.resource.data.folderId);
+    }
+  }
+}

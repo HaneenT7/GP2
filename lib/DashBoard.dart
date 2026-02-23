@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'widgets/custom_sidebar.dart';
 import 'pages/course_folders_page.dart';
-import 'pages/snaps_board_page.dart';
 import 'RevPlanPage.dart';
+import 'pages/snaps_board_page.dart';
+import 'pages/brain_games_page.dart';
+import 'pages/profile_page.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -14,15 +18,45 @@ class DashBoard extends StatefulWidget {
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
   int _selectedDayIndex = 3; // Thu Nov 27
+  String _firstName = '';
 
-  static const List<Map<String, String>> _weekDays = [
-    {'label': 'Mon Nov 24', 'date': '24'},
-    {'label': 'Tue Nov 25', 'date': '25'},
-    {'label': 'Wed Nov 26', 'date': '26'},
-    {'label': 'Thu Nov 27', 'date': '27'},
-    {'label': 'Fri Nov 28', 'date': '28'},
-    {'label': 'Sat Nov 29', 'date': '29'},
-    {'label': 'Sun Nov 30*', 'date': '30'},
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _firstName = 'Guest');
+      return;
+    }
+    try {
+      final doc = await _firestore.collection('students').doc(user.uid).get();
+      if (doc.exists) {
+        final d = doc.data();
+        final first = d?['firstName'] as String?;
+        if (mounted) setState(() => _firstName = (first != null && first.isNotEmpty) ? first : user.displayName ?? user.email?.split('@').first ?? 'Guest');
+      } else {
+        if (mounted) setState(() => _firstName = user.displayName ?? user.email?.split('@').first ?? 'Guest');
+      }
+    } catch (_) {
+      if (mounted) setState(() => _firstName = user.displayName ?? user.email?.split('@').first ?? 'Guest');
+    }
+  }
+
+  static const List<Map<String, dynamic>> _weekDays = [
+    {'day': 'Mon', 'date': 'Nov 24'},
+    {'day': 'Tue', 'date': 'Nov 25'},
+    {'day': 'Wed', 'date': 'Nov 26'},
+    {'day': 'Thu', 'date': 'Nov 27'},
+    {'day': 'Fri', 'date': 'Nov 28'},
+    {'day': 'Sat', 'date': 'Nov 29'},
+    {'day': 'Sun', 'date': 'Nov 30'},
   ];
 
   Widget _getPageForIndex(int index) {
@@ -30,17 +64,17 @@ class _DashBoardState extends State<DashBoard> {
       case 0:
         return _buildDashboardContent();
       case 1:
-        return const RevPlanPage();
+        return RevPlanPage();
       case 2:
-        return const SnapsBoardPage();
+        return SnapsBoardPage();
       case 3:
-        return const CourseFoldersPage();
+        return CourseFoldersPage();
       case 4:
-        return const Center(child: Text("Brain Games Content"));
+        return BrainGamesPage();
       case 5:
         return const Center(child: Text("Quiz Content"));
       case 6:
-        return const Center(child: Text("Profile Content"));
+        return ProfilePage();
       default:
         return _buildDashboardContent();
     }
@@ -48,17 +82,29 @@ class _DashBoardState extends State<DashBoard> {
 
   Widget _buildDashboardContent() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(),
-          const SizedBox(height: 24),
-          _buildGreeting(),
-          const SizedBox(height: 28),
-          _buildUpcomingExamsAndQuote(),
-          const SizedBox(height: 28),
-          _buildDailyTasks(),
+          Container(
+            height: 6,
+            width: double.infinity,
+            color: const Color(0xFFB3E5FC),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 24),
+                _buildGreeting(),
+                const SizedBox(height: 28),
+                _buildUpcomingExamsAndQuote(),
+                const SizedBox(height: 28),
+                _buildDailyTasks(),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -103,9 +149,10 @@ class _DashBoardState extends State<DashBoard> {
   }
 
   Widget _buildGreeting() {
-    return const Text(
-      'Hello, Noura',
-      style: TextStyle(
+    final name = _firstName.isEmpty ? 'Guest' : _firstName;
+    return Text(
+      'Hello, $name',
+      style: const TextStyle(
         fontSize: 24,
         fontWeight: FontWeight.bold,
         color: Colors.black,
@@ -124,8 +171,14 @@ class _DashBoardState extends State<DashBoard> {
             children: [
               Row(
                 children: [
+                  Icon(
+                    Icons.school_outlined,
+                    size: 22,
+                    color: Colors.purple.shade300,
+                  ),
+                  const SizedBox(width: 8),
                   const Text(
-                    'Upcoming Exams ',
+                    'Upcoming Exams',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -133,7 +186,7 @@ class _DashBoardState extends State<DashBoard> {
                     ),
                   ),
                   Text(
-                    '*',
+                    ' *',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -192,7 +245,7 @@ class _DashBoardState extends State<DashBoard> {
               color: Colors.black87,
             ),
           ),
-          Text(date, style: TextStyle(fontSize: 14, color: Colors.grey[800])),
+          Text(date, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ],
       ),
     );
@@ -217,28 +270,35 @@ class _DashBoardState extends State<DashBoard> {
         ],
       ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '"',
-                style: TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  height: 1,
+              Image.asset(
+                'assets/images/quote_mark.png',
+                width: 48,
+                height: 48,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Text(
+                  '"',
+                  style: TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    height: 1,
+                  ),
                 ),
               ),
-              const Expanded(
+              Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(top: 8, left: 8),
+                  padding: const EdgeInsets.only(top: 8, left: 8),
                   child: Text(
                     'Follow your plan, not your mood',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: Colors.deepPurple.shade800,
                     ),
                   ),
                 ),
@@ -248,10 +308,16 @@ class _DashBoardState extends State<DashBoard> {
           Positioned(
             right: 0,
             bottom: -8,
-            child: Icon(
-              Icons.psychology,
-              size: 56,
-              color: const Color(0xFF7C3AED).withOpacity(0.5),
+            child: Image.asset(
+              'assets/images/dashboard_brain.png',
+              width: 64,
+              height: 64,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.psychology,
+                size: 56,
+                color: const Color(0xFF7C3AED).withOpacity(0.5),
+              ),
             ),
           ),
         ],
@@ -285,9 +351,16 @@ class _DashBoardState extends State<DashBoard> {
             ),
             Row(
               children: [
-                TextButton.icon(
+                OutlinedButton.icon(
                   onPressed: () {},
-                  icon: Icon(Icons.refresh, size: 18, color: Colors.grey[700]),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[700],
+                    side: BorderSide(color: Colors.grey[400]!),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
                   label: Text(
                     'Reschedule Overdue Tasks',
                     style: TextStyle(fontSize: 13, color: Colors.grey[700]),
@@ -314,63 +387,98 @@ class _DashBoardState extends State<DashBoard> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        _buildDaysBar(),
         const SizedBox(height: 20),
+        _buildDaysBar(),
+        const SizedBox(height: 24),
         _buildTaskCards(),
       ],
     );
   }
 
   Widget _buildDaysBar() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: List.generate(_weekDays.length, (index) {
-          final day = _weekDays[index];
-          final isSelected = index == _selectedDayIndex;
-          return Padding(
-            padding: const EdgeInsets.only(right: 10),
+    const spacing = 10.0;
+    const boxHeight = 64.0;
+    return Row(
+      children: List.generate(_weekDays.length, (index) {
+        final day = _weekDays[index];
+        final isSelected = index == _selectedDayIndex;
+        final hasRedDot = index == 6;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: index < _weekDays.length - 1 ? spacing : 0),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: () => setState(() => _selectedDayIndex = index),
                 borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.grey[200] : Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: isSelected
-                        ? Border.all(color: Colors.black87, width: 1.5)
-                        : Border.all(color: Colors.grey[300]!),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: boxHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.grey[300] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(10),
+                        border: isSelected
+                            ? Border.all(color: Colors.black87, width: 1.5)
+                            : Border.all(color: Colors.grey[300]!),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    day['label']!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                      color: isSelected ? Colors.black87 : Colors.grey[700],
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            day['day'] as String,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            day['date'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    if (hasRedDot)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
-          );
-        }),
-      ),
+          ),
+        );
+      }),
     );
   }
 
@@ -416,15 +524,20 @@ class _DashBoardState extends State<DashBoard> {
       ),
     ];
 
-    const spacing = 12.0;
+    const spacing = 16.0;
+    const runSpacing = 16.0;
     return LayoutBuilder(
       builder: (context, constraints) {
         final cardWidth = (constraints.maxWidth - spacing) / 2;
         return Wrap(
           spacing: spacing,
-          runSpacing: spacing,
+          runSpacing: runSpacing,
+          alignment: WrapAlignment.start,
           children: allCards
-              .map((card) => SizedBox(width: cardWidth, child: card))
+              .map((card) => SizedBox(
+                    width: cardWidth,
+                    child: card,
+                  ))
               .toList(),
         );
       },
@@ -442,117 +555,122 @@ class _DashBoardState extends State<DashBoard> {
     const greyButtonBg = Color(0xFFF5F5F5);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 0),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: EdgeInsets.fromLTRB(16, 14, isRescheduled ? 72 : 16, 14),
-            decoration: BoxDecoration(
-              color: isCompleted ? greenBg : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isCompleted
-                    ? Colors.transparent
-                    : const Color(0xFFE8E8E8),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: isCompleted ? greenCheck : Colors.black87,
-                      width: isCompleted ? 2 : 1,
-                    ),
-                  ),
-                  child: isCompleted
-                      ? const Center(
-                          child: Icon(Icons.check, size: 16, color: greenCheck),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        course,
-                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Material(
-                  color: isCompleted ? greenCheck : greyButtonBg,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    onTap: () {},
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      child: Text(
-                        'Take Quiz',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isCompleted ? Colors.white : Colors.grey[800],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(16, 14, isRescheduled ? 120 : 16, 14),
+        decoration: BoxDecoration(
+          color: isCompleted ? greenBg : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCompleted
+                ? Colors.transparent
+                : const Color(0xFFE8E8E8),
+            width: 1,
           ),
-          if (isRescheduled) _buildRescheduledBanner(),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isCompleted ? greenCheck : Colors.black87,
+                        width: isCompleted ? 2 : 1,
+                      ),
+                    ),
+                    child: isCompleted
+                        ? const Center(
+                            child: Icon(Icons.check, size: 16, color: greenCheck),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          course,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Material(
+                    color: isCompleted ? greenCheck : greyButtonBg,
+                    borderRadius: BorderRadius.circular(8),
+                    child: InkWell(
+                      onTap: () {},
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          'Take Quiz',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isCompleted ? Colors.white : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (isRescheduled) _buildRescheduledBanner(),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildRescheduledBanner() {
     return Positioned(
-      top: 8,
-      right: 8,
+      top: 0,
+      right: 0,
       child: Transform.rotate(
         angle: 0.785398,
+        alignment: Alignment.topRight,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFF38BDF8),
+            borderRadius: BorderRadius.circular(4),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 4,
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 2,
                 offset: const Offset(0, 1),
               ),
             ],
@@ -578,6 +696,24 @@ class _DashBoardState extends State<DashBoard> {
           CustomSidebar(
             selectedIndex: _selectedIndex,
             onItemSelected: (index) {
+              const navNames = [
+                'Dashboard',
+                'Revision Plan',
+                'Snaps Board',
+                'Course Folder',
+                'Brain Games',
+                'Quiz',
+                'Profile',
+              ];
+              if (index >= 0 && index < navNames.length) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(navNames[index]),
+                    duration: const Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
               setState(() {
                 _selectedIndex = index;
               });

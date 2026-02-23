@@ -12,75 +12,62 @@ class CustomSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    
-    // Responsive sizing based on screen width
-    final isMobile = screenWidth < 600;
-    final isTablet = screenWidth >= 600 && screenWidth < 1024;
-    
-    // Sidebar width: Mobile (60px), Tablet (70px), Desktop (80px)
-    final sidebarWidth = isMobile ? 60.0 : (isTablet ? 70.0 : 80.0);
-    
-    // Logo size scales with sidebar width
-    final logoSize = sidebarWidth;
-    final logoBorderRadius = sidebarWidth * 0.25;
-    
-    // Icon sizes scale proportionally
-    final iconSize = isMobile ? 20.0 : (isTablet ? 22.0 : 24.0);
-    final navPadding = isMobile ? 8.0 : (isTablet ? 10.0 : 12.0);
-    final navMargin = isMobile ? 12.0 : (isTablet ? 14.0 : 16.0);
-    final verticalPadding = isMobile ? 16.0 : (isTablet ? 18.0 : 20.0);
-    final spacing = isMobile ? 16.0 : (isTablet ? 18.0 : 20.0);
-    
+    // Design constants taken from the reference (174 x 1024) nav
+    const sidebarWidth = 174.0;
+    const backgroundColor = Color(0xFFBFDFFF); // soft light blue similar to screenshot
+    const sidebarRadius = Radius.circular(32); // rounded right corners
+
+    const logoWidth = 173.0;
+    const logoHeight = 172.0;
+    const logoTopPadding = 12.0;
+    const iconSize = 26.0;
+    const navPadding = 10.0;
+    const navMargin = 18.0;
+
     return Container(
       width: sidebarWidth,
       decoration: const BoxDecoration(
-        color: Color(0xFF6A4E88), // Same muted purple as Snaps Board header
+        color: backgroundColor,
+        borderRadius: BorderRadius.only(
+          topRight: sidebarRadius,
+          bottomRight: sidebarRadius,
+        ),
       ),
       child: Column(
         children: [
-          // WATAD Logo Section
-          Container(
-            padding: EdgeInsets.symmetric(vertical: verticalPadding),
-            child: Column(
-              children: [
-                // WATAD Logo Image
-                Container(
-                  width: logoSize,
-                  height: logoSize,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(logoBorderRadius),
-                    child: Image.asset(
-                      'assets/images/watad_logo.png',
-                      width: logoSize,
-                      height: logoSize,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback to icon if image not found
-                        return Container(
-                          width: logoSize,
-                          height: logoSize,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6A4E88).withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(logoBorderRadius),
-                          ),
-                          child: Icon(
-                            Icons.water_drop_outlined,
-                            color: Colors.white,
-                            size: logoSize * 0.5,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+          // WATAD Logo Section – 173×172
+          Padding(
+            padding: const EdgeInsets.only(
+              top: logoTopPadding,
+              left: 4,
+              right: 4,
+              bottom: 8,
+            ),
+            child: SizedBox(
+              width: logoWidth,
+              height: logoHeight,
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: Image.asset(
+                  'assets/images/watad_logo.png',
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Text(
+                      'WATAD',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    );
+                  },
                 ),
-              ],
+              ),
             ),
           ),
 
-          SizedBox(height: spacing),
+          const SizedBox(height: 16),
 
-          // Navigation Items
+          // Navigation Items – single column of evenly spaced icons
           _buildNavItem(Icons.dashboard, 0, 'Dashboard', iconSize, navPadding, navMargin),
           _buildNavItem(Icons.checklist, 1, 'Revision Plan', iconSize, navPadding, navMargin),
           _buildSlantedNavItem(Icons.push_pin, 2, 'Snaps Board', iconSize, navPadding, navMargin),
@@ -92,7 +79,7 @@ class CustomSidebar extends StatelessWidget {
 
           // Profile at bottom
           Padding(
-            padding: EdgeInsets.only(bottom: verticalPadding),
+            padding: const EdgeInsets.only(bottom: 24.0),
             child: _buildNavItem(Icons.person, 6, 'Profile', iconSize, navPadding, navMargin),
           ),
         ],
@@ -105,23 +92,23 @@ class CustomSidebar extends StatelessWidget {
     
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 150),
+      showDuration: const Duration(seconds: 2),
+      preferBelow: false,
       child: GestureDetector(
         onTap: () => onItemSelected(index),
         child: Container(
-          margin: EdgeInsets.symmetric(vertical: 8, horizontal: margin),
-          padding: EdgeInsets.all(padding),
+          margin: EdgeInsets.symmetric(vertical: 14, horizontal: margin),
+          padding: EdgeInsets.all(padding + 2),
           decoration: BoxDecoration(
-            color: isSelected 
-                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
+            color: isSelected
+                ? const Color(0xFF3EC4D9) // teal-ish selected block similar to screenshot
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(padding),
-            border: isSelected 
-                ? Border.all(color: const Color(0xFF3399FF), width: 1)
-                : null,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
             icon,
-            color: isSelected ? const Color(0xFF3399FF) : Colors.white70,
+            color: isSelected ? Colors.white : Colors.white,
             size: iconSize,
           ),
         ),
@@ -134,25 +121,25 @@ class CustomSidebar extends StatelessWidget {
     
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 150),
+      showDuration: const Duration(seconds: 2),
+      preferBelow: false,
       child: GestureDetector(
         onTap: () => onItemSelected(index),
         child: Container(
-          margin: EdgeInsets.symmetric(vertical: 8, horizontal: margin),
-          padding: EdgeInsets.all(padding),
+          margin: EdgeInsets.symmetric(vertical: 14, horizontal: margin),
+          padding: EdgeInsets.all(padding + 2),
           decoration: BoxDecoration(
-            color: isSelected 
-                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
+            color: isSelected
+                ? const Color(0xFF3EC4D9)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(padding),
-            border: isSelected 
-                ? Border.all(color: const Color(0xFF3399FF), width: 1)
-                : null,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Transform.rotate(
-            angle: 0.9, // Rotate about 17 degrees clockwise to match the photo
+            angle: 0.9, // slight slant to mimic the reference
             child: Icon(
               icon,
-              color: isSelected ? const Color(0xFF3399FF) : Colors.white70,
+              color: isSelected ? Colors.white : Colors.white,
               size: iconSize,
             ),
           ),
@@ -163,23 +150,23 @@ class CustomSidebar extends StatelessWidget {
 
   Widget _buildPenAndBookNavItem(int index, String tooltip, double iconSize, double padding, double margin) {
     final isSelected = selectedIndex == index;
-    final color = isSelected ? const Color(0xFF3399FF) : Colors.white70;
+    final color = Colors.white;
     
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 150),
+      showDuration: const Duration(seconds: 2),
+      preferBelow: false,
       child: GestureDetector(
         onTap: () => onItemSelected(index),
         child: Container(
-          margin: EdgeInsets.symmetric(vertical: 8, horizontal: margin),
-          padding: EdgeInsets.all(padding),
+          margin: EdgeInsets.symmetric(vertical: 14, horizontal: margin),
+          padding: EdgeInsets.all(padding + 2),
           decoration: BoxDecoration(
-            color: isSelected 
-                ? const Color(0xFF3399FF).withOpacity(0.3) // Light blue when selected (matches header)
+            color: isSelected
+                ? const Color(0xFF3EC4D9)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(padding),
-            border: isSelected 
-                ? Border.all(color: const Color(0xFF3399FF), width: 1)
-                : null,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: SizedBox(
             width: iconSize,

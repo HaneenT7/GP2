@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'models/course_folder.dart';
 import 'models/folder_file.dart';
 import 'services/folder_service.dart';
 import 'services/file_service.dart';
+import 'services/revision_plan_service.dart';
 
 class SetUpRevPlan extends StatefulWidget {
   final VoidCallback onClose;
@@ -15,10 +17,12 @@ class SetUpRevPlan extends StatefulWidget {
 class _SetUpRevPlanState extends State<SetUpRevPlan> {
   final FolderService _folderService = FolderService();
   final FileService _fileService = FileService();
+  final RevisionPlanService _revisionPlanService = RevisionPlanService();
 
   CourseFolder? _selectedFolder;
   final Set<String> _selectedFileIds = {};
   DateTime _selectedDate = DateTime.now();
+  bool _isGenerating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -140,11 +144,20 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
           right: 32,
           bottom: 32,
           child: ElevatedButton.icon(
-            onPressed: widget.onClose,
-            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 23),
-            label: const Text(
-              'Generate Revision Plan',
-              style: TextStyle(
+            onPressed: _isGenerating ? null : _onGenerateRevisionPlan,
+            icon: _isGenerating
+                ? const SizedBox(
+                    width: 23,
+                    height: 23,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.auto_awesome, color: Colors.white, size: 23),
+            label: Text(
+              _isGenerating ? 'Generating…' : 'Generate Revision Plan',
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
@@ -158,7 +171,78 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
             ),
           ),
         ),
+        if (_isGenerating)
+          Positioned.fill(
+            child: ModalBarrier(
+              color: Colors.black26,
+              dismissible: false,
+            ),
+          ),
       ],
+    );
+  }
+
+  Future<void> _onGenerateRevisionPlan() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      _showSnackBar('Please sign in to generate a plan.', isError: true);
+      return;
+    }
+    if (_selectedFolder == null) {
+      _showSnackBar('Please select a course folder.', isError: true);
+      return;
+    }
+    if (_selectedFileIds.isEmpty) {
+      _showSnackBar('Please select at least one exam material.', isError: true);
+      return;
+    }
+
+    setState(() => _isGenerating = true);
+
+    try {
+      final files = await _fileService.getFiles(_selectedFolder!.id).first;
+      final selectedFiles = files
+          .where((f) => _selectedFileIds.contains(f.id))
+          .map((f) => f.fileName)
+          .toList();
+      final requestId = _revisionPlanService.generateRequestId();
+      final request = RevisionPlanRequest(
+        userId: userId,
+        requestId: requestId,
+        folderId: _selectedFolder!.id,
+        folderName: _selectedFolder!.name,
+        examDateIso: _selectedDate.toIso8601String().split('T').first,
+        selectedFileIds: _selectedFileIds.toList(),
+        selectedFileNames: selectedFiles,
+      );
+
+      final result = await _revisionPlanService.generatePlan(request);
+
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+
+      if (result.status == 'completed') {
+        _showSnackBar('Revision plan generated successfully.');
+        widget.onClose();
+      } else {
+        _showSnackBar(
+          result.errorMessage ?? 'Failed to generate plan.',
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isGenerating = false);
+      _showSnackBar('Error: ${e.toString().replaceFirst(RegExp(r'^Exception: '), '')}', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+      ),
     );
   }
 

@@ -7,6 +7,8 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
+import "pages/availability_calendar_dialog.dart";
+
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -324,76 +326,104 @@ class _DashBoardState extends State<DashBoard> {
       ),
     );
   }
-
   Widget _buildDailyTasks() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Daily Tasks',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Daily Tasks',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Thursday, November 27',
+          // 🆕 ADD THIS BUTTON
+          OutlinedButton.icon(
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AvailabilityCalendarDialog(),
+              );
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF9333EA),
+              side: const BorderSide(color: Color(0xFFE9D5FF), width: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              backgroundColor: const Color(0xFFFAF5FF),
+            ),
+            icon: const Icon(Icons.calendar_today, size: 18),
+            label: const Text(
+              'Configure Availability',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
               ),
             ),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[700],
-                    side: BorderSide(color: Colors.grey[400]!),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
-                  label: Text(
-                    'Reschedule Overdue Tasks',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      if (_selectedDayIndex > 0) _selectedDayIndex--;
-                    });
-                  },
-                  icon: Icon(Icons.chevron_left, color: Colors.grey[700]),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      if (_selectedDayIndex < _weekDays.length - 1)
-                        _selectedDayIndex++;
-                    });
-                  },
-                  icon: Icon(Icons.chevron_right, color: Colors.grey[700]),
-                ),
-              ],
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Thursday, November 27',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
             ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildDaysBar(),
-        const SizedBox(height: 24),
-        _buildTaskCards(),
-      ],
-    );
-  }
+          ),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: () {},
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[700],
+                  side: BorderSide(color: Colors.grey[400]!),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
+                label: Text(
+                  'Reschedule Overdue Tasks',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    if (_selectedDayIndex > 0) _selectedDayIndex--;
+                  });
+                },
+                icon: Icon(Icons.chevron_left, color: Colors.grey[700]),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    if (_selectedDayIndex < _weekDays.length - 1)
+                      _selectedDayIndex++;
+                  });
+                },
+                icon: Icon(Icons.chevron_right, color: Colors.grey[700]),
+              ),
+            ],
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      _buildDaysBar(),
+      const SizedBox(height: 24),
+      _buildTaskCards(),
+    ],
+  );
+}
+
 
   Widget _buildDaysBar() {
     const spacing = 10.0;

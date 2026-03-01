@@ -14,6 +14,8 @@ class RevisionPlanRequest {
   final String examDateIso;
   final List<String> selectedFileIds;
   final List<String> selectedFileNames;
+  final List<String> selectedFileUrls; 
+
 
   RevisionPlanRequest({
     required this.userId,
@@ -23,6 +25,7 @@ class RevisionPlanRequest {
     required this.examDateIso,
     required this.selectedFileIds,
     required this.selectedFileNames,
+    required this.selectedFileUrls,
   });
 
   Map<String, dynamic> toJson() => {
@@ -33,6 +36,7 @@ class RevisionPlanRequest {
         'examDate': examDateIso,
         'selectedFileIds': selectedFileIds,
         'selectedFileNames': selectedFileNames,
+        'fileUrls': selectedFileUrls,
       };
 }
 

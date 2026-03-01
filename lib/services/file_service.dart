@@ -107,7 +107,7 @@ class FileService {
           id: '', // Will be set by Firestore
           folderId: folderId,
           fileName: fileName,
-          fileUrl: downloadUrl,
+          fileUrl: downloadUrl, // <-- already the correct URL
           fileSize: fileSize,
           uploadedAt: DateTime.now(),
           uploadedBy: currentUserId!,

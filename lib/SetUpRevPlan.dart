@@ -5,6 +5,9 @@ import 'models/folder_file.dart';
 import 'services/folder_service.dart';
 import 'services/file_service.dart';
 import 'services/revision_plan_service.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class SetUpRevPlan extends StatefulWidget {
   final VoidCallback onClose;
@@ -200,24 +203,25 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
     setState(() => _isGenerating = true);
 
     try {
-      final files = await _fileService.getFiles(_selectedFolder!.id).first;
-      final selectedFiles = files
-          .where((f) => _selectedFileIds.contains(f.id))
-          .map((f) => f.fileName)
-          .toList();
-      final requestId = _revisionPlanService.generateRequestId();
-      final request = RevisionPlanRequest(
-        userId: userId,
-        requestId: requestId,
-        folderId: _selectedFolder!.id,
-        folderName: _selectedFolder!.name,
-        examDateIso: _selectedDate.toIso8601String().split('T').first,
-        selectedFileIds: _selectedFileIds.toList(),
-        selectedFileNames: selectedFiles,
-      );
+final files = await _fileService.getFiles(_selectedFolder!.id).first;
+final selectedFiles = files.where((f) => _selectedFileIds.contains(f.id)).toList();
 
-      final result = await _revisionPlanService.generatePlan(request);
+final selectedFileNames = selectedFiles.map((f) => f.fileName).toList();
+final fileUrls = selectedFiles.map((f) => f.fileUrl).toList();
 
+final requestId = _revisionPlanService.generateRequestId();
+final request = RevisionPlanRequest(
+  userId: userId,
+  requestId: requestId,
+  folderId: _selectedFolder!.id,
+  folderName: _selectedFolder!.name,
+  examDateIso: _selectedDate.toIso8601String().split('T').first,
+  selectedFileIds: _selectedFileIds.toList(),
+  selectedFileNames: selectedFileNames,
+  selectedFileUrls: fileUrls,
+);
+
+final result = await _revisionPlanService.generatePlan(request);
       if (!mounted) return;
       setState(() => _isGenerating = false);
 

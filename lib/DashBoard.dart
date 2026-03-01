@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:dotted_border/dotted_border.dart';
 import 'widgets/custom_sidebar.dart';
 import 'pages/course_folders_page.dart';
 import 'RevPlanPage.dart';
@@ -21,6 +23,8 @@ class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
   int _selectedDayIndex = 3; // Thu Nov 27
   String _firstName = '';
+
+  String? _selectedQuizFileName;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -74,12 +78,234 @@ class _DashBoardState extends State<DashBoard> {
       case 4:
         return BrainGamesPage();
       case 5:
-        return const Center(child: Text("Quiz Content"));
+        return _buildQuizContent();
       case 6:
         return ProfilePage();
       default:
         return _buildDashboardContent();
     }
+  }
+
+  Future<void> _pickQuizFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      allowMultiple: false,
+    );
+    if (result != null && result.files.isNotEmpty && mounted) {
+      final file = result.files.first;
+      setState(() => _selectedQuizFileName = file.name);
+    }
+  }
+
+  Widget _buildQuizContent() {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 6,
+            width: double.infinity,
+            color: const Color(0xFFB3E5FC),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildQuizHeader(),
+                const SizedBox(height: 32),
+                _buildQuizUploadZone(),
+                if (_selectedQuizFileName != null) ...[
+                  const SizedBox(height: 24),
+                  _buildSelectedFileAndStartButton(),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuizHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Quiz',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              Icons.notifications_outlined,
+              size: 28,
+              color: Colors.grey[700],
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuizUploadZone() {
+    return DottedBorder(
+      options: RoundedRectDottedBorderOptions(
+        radius: const Radius.circular(12),
+        dashPattern: const [8, 4],
+        strokeWidth: 2,
+        color: Colors.grey.shade400!,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _pickQuizFile,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.cloud_upload_outlined,
+                  size: 56,
+                  color: Colors.grey.shade600,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'select your file or drag and drop',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'one pdf file accepted',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Material(
+                  color: const Color(0xFFE9D5FF),
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    onTap: _pickQuizFile,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      child: Text(
+                        'browse',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.purple.shade800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedFileAndStartButton() {
+    return Center(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: Text(
+                  _selectedQuizFileName!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _pickQuizFile,
+                icon: Icon(Icons.edit_outlined, size: 20, color: Colors.grey.shade600),
+                tooltip: 'Change file',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+              IconButton(
+                onPressed: () => setState(() => _selectedQuizFileName = null),
+                icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey.shade600),
+                tooltip: 'Remove file',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Material(
+            color: const Color(0xFFE9D5FF),
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Starting your quiz...'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Start Your Quiz',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.purple.shade800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDashboardContent() {

@@ -104,12 +104,9 @@ class RevisionPlanService {
   }
 
   /// Listen for the plan document written by n8n. Completes when status is 'completed' or 'error', or on timeout.
+  /// n8n writes to revisionPlans/{requestId} (no subcollection) so we listen at that path.
   Future<RevisionPlanResult> waitForPlan(String userId, String requestId) async {
-    final docRef = _firestore
-        .collection(_collection)
-        .doc(userId)
-        .collection('requests')
-        .doc(requestId);
+    final docRef = _firestore.collection(_collection).doc(requestId);
 
     final completer = Completer<RevisionPlanResult>();
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;

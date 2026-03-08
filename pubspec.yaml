@@ -50,6 +50,9 @@ dependencies:
   google_fonts: ^6.0.0
   http: ^1.2.0
 
+#PDF 
+  syncfusion_flutter_pdf: ^24.1.41
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -101,5 +104,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
 

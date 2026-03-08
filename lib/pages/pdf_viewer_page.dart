@@ -1,6 +1,13 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:http/http.dart' as http;
+
+import '../services/pdf_text_extractor.dart';
 import '../models/folder_file.dart';
+import '../services/gemini_service.dart';
+import 'quiz_page.dart';
 
 class PdfViewerPage extends StatefulWidget {
   final FolderFile file;
@@ -13,8 +20,9 @@ class PdfViewerPage extends StatefulWidget {
 
 class _PdfViewerPageState extends State<PdfViewerPage> {
   late WebViewController _webViewController;
+
   bool _isLoading = true;
-  String? _errorMessage;
+  bool _isGeneratingQuiz = false;
 
   @override
   void initState() {
@@ -23,110 +31,94 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
   }
 
   void _initializeWebView() {
-    // Use Google Docs Viewer for better PDF compatibility
-    // This ensures PDFs render properly in WebView
     final pdfUrl = widget.file.fileUrl;
-    final viewerUrl = 'https://docs.google.com/viewer?url=${Uri.encodeComponent(pdfUrl)}&embedded=true';
-    
-    // Create WebView controller
+
+    final viewerUrl =
+        'https://docs.google.com/viewer?url=${Uri.encodeComponent(pdfUrl)}&embedded=true';
+
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            setState(() {
-              _isLoading = true;
-              _errorMessage = null;
-            });
-          },
-          onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
-          },
-          onWebResourceError: (WebResourceError error) {
-            setState(() {
-              _isLoading = false;
-              _errorMessage = 'Failed to load PDF: ${error.description}';
-            });
-          },
-        ),
-      )
       ..loadRequest(Uri.parse(viewerUrl));
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _generateQuizFromPdf() async {
+    setState(() {
+      _isGeneratingQuiz = true;
+    });
+
+    try {
+      Uint8List pdfBytes;
+
+      final pdfPath = widget.file.fileUrl;
+
+      /// إذا كان الرابط من الإنترنت
+      if (pdfPath.startsWith("http")) {
+        final response = await http.get(Uri.parse(pdfPath));
+
+        if (response.statusCode != 200) {
+          throw Exception("Failed to download PDF");
+        }
+
+        pdfBytes = response.bodyBytes;
+      }
+
+      /// إذا كان ملف محلي
+      else {
+        final file = File(pdfPath);
+        pdfBytes = await file.readAsBytes();
+      }
+
+      /// استخراج النص من PDF
+      final extractedText = extractTextFromPdf(pdfBytes);
+
+      final shortenedText = extractedText.length > 3000
+          ? extractedText.substring(0, 3000)
+          : extractedText;
+
+      /// إرسال النص إلى Gemini لتوليد الكويز
+      final quiz = await generateQuiz(shortenedText);
+
+      if (!mounted) return;
+
+      /// فتح صفحة الكويز
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuizPage(quiz: quiz),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error generating quiz: $e")),
+      );
+    }
+
+    setState(() {
+      _isGeneratingQuiz = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.file.fileName,
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: const [],
+        title: Text(widget.file.fileName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.quiz),
+            onPressed: _isGeneratingQuiz ? null : _generateQuizFromPdf,
+          )
+        ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.red,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _isLoading = true;
-                            _errorMessage = null;
-                          });
-                          _initializeWebView();
-                        },
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              : Stack(
-                  children: [
-                    // WebView to display PDF
-                    WebViewWidget(controller: _webViewController),
-                    // Loading indicator
-                    if (_isLoading)
-                      const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                  ],
-                ),
+          ? const Center(child: CircularProgressIndicator())
+          : WebViewWidget(controller: _webViewController),
     );
   }
 }
-

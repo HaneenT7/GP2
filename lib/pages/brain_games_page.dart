@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'sudoku_game_page.dart';
+import 'word_search_game_page.dart';
+import 'math_lab_game_page.dart';
+import 'memory_game_page.dart';
 
 class BrainGamesPage extends StatelessWidget {
   const BrainGamesPage({super.key});
@@ -108,6 +112,11 @@ class BrainGamesPage extends StatelessWidget {
         cardColor: const Color(0xFFFFF8E1),
         borderColor: const Color(0xFFE6D98A),
         child: _buildPreviewImage('assets/images/search_words_preview.png'),
+        // 👇 تعديل هنا فقط: أضفنا onPressed
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const WordSearchGamePage()),
+        ),
       ),
       _GameCardData(
         title: 'Sudoku',
@@ -115,6 +124,10 @@ class BrainGamesPage extends StatelessWidget {
         cardColor: const Color(0xFFE8F5E9),
         borderColor: const Color(0xFFA5D6A7),
         child: _buildPreviewImage('assets/images/sudoku_preview.png'),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SudokuGamePage()),
+        ),
       ),
       _GameCardData(
         title: 'Math lab',
@@ -125,20 +138,27 @@ class BrainGamesPage extends StatelessWidget {
           'assets/images/math_lab_preview.png',
           _buildMathLabPreview(),
         ),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MathLabGamePage()),
+        ),
       ),
       _GameCardData(
-        title: 'Anagrams',
+        title: 'Memory',
         backgroundImage: 'assets/images/bg_anagrams.png',
         cardColor: const Color(0xFFF3E5F5),
         borderColor: const Color(0xFFCE93D8),
         child: _buildPreviewImageOrWidget(
           'assets/images/anagrams_preview.png',
-          _buildAnagramsPreview(),
+          _buildMemoryPreview(),
+        ),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MemoryGamePage()),
         ),
       ),
     ];
 
-    // Fixed card size for each game background
     const cardWidth = 258.0;
     const cardHeight = 362.0;
     const cardSpacing = 16.0;
@@ -231,45 +251,48 @@ class BrainGamesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildAnagramsPreview() {
+  Widget _buildMemoryPreview() {
+    final colors = [
+      const Color(0xFF4CAF50), const Color(0xFF2196F3),
+      const Color(0xFFFF9800), const Color(0xFF9C27B0),
+    ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Possibility',
-              style: GoogleFonts.iceland(
-                fontSize: _previewFontSize,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64B5F6),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 1,
-              width: 120,
-              color: Colors.grey.shade600,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'bit bolt boy lip list loss oil\npilot plot toy pot slip soil\nsoy spot spy stop tip top',
-              style: GoogleFonts.iceland(
-                fontSize: _previewFontSize,
-                height: 1.2,
-                color: const Color(0xFFFFB74D),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
         ),
+        itemCount: 8,
+        itemBuilder: (context, i) {
+          final isFlipped = i < 2;
+          return Container(
+            decoration: BoxDecoration(
+              color: isFlipped ? colors[i % colors.length] : const Color(0xFF2C2C2E),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isFlipped ? colors[i % colors.length] : const Color(0xFF64B5F6),
+                width: 1.5,
+              ),
+            ),
+            child: Center(
+              child: isFlipped
+                  ? const Icon(Icons.star, color: Colors.white, size: 18)
+                  : Text('?',
+                      style: GoogleFonts.iceland(
+                        fontSize: 18,
+                        color: const Color(0xFF64B5F6),
+                      )),
+            ),
+          );
+        },
       ),
     );
   }
@@ -308,6 +331,7 @@ class _GameCardData {
   final Color cardColor;
   final Color borderColor;
   final Widget child;
+  final VoidCallback onPressed; // 👈 أضفنا هذا
 
   const _GameCardData({
     required this.title,
@@ -315,6 +339,7 @@ class _GameCardData {
     required this.cardColor,
     required this.borderColor,
     required this.child,
+    required this.onPressed, // 👈 أضفنا هذا
   });
 }
 
@@ -378,7 +403,7 @@ class _GameCard extends StatelessWidget {
                 child: Center(child: data.child),
               ),
               const SizedBox(height: 16),
-              _StartButton(onPressed: () {}),
+              _StartButton(onPressed: data.onPressed), // 👈 ربطنا الزر هنا
             ],
           ),
         ),

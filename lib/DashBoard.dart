@@ -12,6 +12,8 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
+import 'pages/availability_calendar_dialog.dart'; // Adjust path as needed
+
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -695,13 +697,40 @@ class _DashBoardState extends State<DashBoard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Daily Tasks',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Daily Tasks',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AvailabilityCalendarDialog(),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF9333EA),
+                side: const BorderSide(color: Color(0xFFE9D5FF), width: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                backgroundColor: const Color(0xFFFAF5FF),
+              ),
+              icon: const Icon(Icons.calendar_today, size: 18),
+              label: const Text(
+                'Configure Availability',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
@@ -743,8 +772,9 @@ class _DashBoardState extends State<DashBoard> {
                 IconButton(
                   onPressed: () {
                     setState(() {
-                      if (_selectedDayIndex < _weekDays.length - 1)
+                      if (_selectedDayIndex < _weekDays.length - 1) {
                         _selectedDayIndex++;
+                      }
                     });
                   },
                   icon: Icon(Icons.chevron_right, color: Colors.grey[700]),

@@ -1,5 +1,6 @@
 /// App configuration.
-/// Replace with your n8n webhook URL once the flow is deployed.
+/// Use production `/webhook/...` when the n8n workflow is active.
+/// Override at build time: `--dart-define=N8N_REVISION_PLAN_WEBHOOK=...`
 const String n8nRevisionPlanWebhookUrl = String.fromEnvironment(
   'N8N_REVISION_PLAN_WEBHOOK',
   defaultValue:

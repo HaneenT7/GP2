@@ -22,7 +22,7 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
-  int _selectedDayIndex = 3; // Thu Nov 27
+  int _selectedDayIndex = 3;
   String _firstName = '';
   String? _selectedQuizFileName;
   Uint8List? _selectedQuizFileBytes;
@@ -57,15 +57,68 @@ class _DashBoardState extends State<DashBoard> {
     }
   }
 
-  static const List<Map<String, dynamic>> _weekDays = [
-    {'day': 'Mon', 'date': 'Nov 24'},
-    {'day': 'Tue', 'date': 'Nov 25'},
-    {'day': 'Wed', 'date': 'Nov 26'},
-    {'day': 'Thu', 'date': 'Nov 27'},
-    {'day': 'Fri', 'date': 'Nov 28'},
-    {'day': 'Sat', 'date': 'Nov 29'},
-    {'day': 'Sun', 'date': 'Nov 30'},
-  ];
+  List<Map<String, dynamic>> get _weekDays {
+    final now = DateTime.now();
+    final selected = DateTime(now.year, now.month, now.day)
+        .add(Duration(days: _selectedDayIndex - 3));
+    final monday = selected.subtract(Duration(days: selected.weekday - 1));
+    return List.generate(7, (index) {
+      final date = monday.add(Duration(days: index));
+      return {
+        'day': _weekdayShort(date.weekday),
+        'date': '${_monthShort(date.month)} ${date.day}',
+        'fullDate': DateTime(date.year, date.month, date.day),
+      };
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> _revisionPlansStream() {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(const []);
+    return _firestore
+        .collection('revisionPlans')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+              .toList(),
+        );
+  }
+
+  DateTime? _tryParseDate(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  String _weekdayShort(int weekday) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return names[(weekday - 1).clamp(0, 6)];
+  }
+
+  String _monthShort(int month) {
+    const names = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return names[(month - 1).clamp(0, 11)];
+  }
+
+  String _formatDate(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    return '${_weekdayShort(d.weekday)}, ${_monthShort(d.month)} ${d.day}';
+  }
 
   Widget _getPageForIndex(int index) {
     switch (index) {
@@ -93,16 +146,12 @@ class _DashBoardState extends State<DashBoard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 6,
-            width: double.infinity,
-            color: const Color(0xFFB3E5FC),
-          ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const SizedBox(height: 20),
                 _buildHeader(),
                 const SizedBox(height: 24),
                 _buildGreeting(),
@@ -204,16 +253,67 @@ class _DashBoardState extends State<DashBoard> {
                 ],
               ),
               const SizedBox(height: 12),
-              _buildExamCard(
-                title: 'SEW 434 EXAM',
-                date: '30/11/2025',
-                color: const Color(0xFFFFF3CD),
-              ),
-              const SizedBox(height: 12),
-              _buildExamCard(
-                title: 'SEW 343 EXAM',
-                date: '05/12/2025',
-                color: const Color(0xFFFFE4CC),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _revisionPlansStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final today = DateTime.now();
+                  final startToday = DateTime(today.year, today.month, today.day);
+                  final plans = (snapshot.data ?? [])
+                      .where((p) => _tryParseDate(p['examDate']) != null)
+                      .toList()
+                    ..sort((a, b) => _tryParseDate(a['examDate'])!
+                        .compareTo(_tryParseDate(b['examDate'])!));
+
+                  final upcoming = plans
+                      .where((p) => !_tryParseDate(p['examDate'])!.isBefore(startToday))
+                      .take(2)
+                      .toList();
+
+                  if (upcoming.isEmpty) {
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 18,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'No upcoming exams yet. Create a revision plan to get started.',
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: List.generate(upcoming.length, (index) {
+                      final plan = upcoming[index];
+                      final examDate = _tryParseDate(plan['examDate'])!;
+                      final title =
+                          '${(plan['folderName'] as String? ?? 'Course').toUpperCase()} EXAM';
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
+                        child: _buildExamCard(
+                          title: title,
+                          date:
+                              '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                          color: index.isEven
+                              ? const Color(0xFFFFF3CD)
+                              : const Color(0xFFFFE4CC),
+                        ),
+                      );
+                    }),
+                  );
+                },
               ),
             ],
           ),
@@ -421,16 +521,12 @@ class _DashBoardState extends State<DashBoard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 6,
-            width: double.infinity,
-            color: const Color(0xFFB3E5FC),
-          ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const SizedBox(height: 20),
                 _buildQuizHeader(),
                 const SizedBox(height: 32),
                 _buildQuizUploadZone(),
@@ -611,9 +707,9 @@ class _DashBoardState extends State<DashBoard> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Thursday, November 27',
-              style: TextStyle(
+            Text(
+              _formatDate(_weekDays[_selectedDayIndex]['fullDate'] as DateTime),
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Colors.black,
@@ -753,62 +849,62 @@ class _DashBoardState extends State<DashBoard> {
   }
 
   Widget _buildTaskCards() {
-    final completedTasks = [
-      {'title': 'Revise Chapter 9', 'course': 'Math 106'},
-      {'title': 'Revise Chapter 10', 'course': 'Math 106'},
-      {'title': 'Revise Chapter 6', 'course': 'SWE 211'},
-    ];
-    final pendingTasks = [
-      {'title': 'Revise Chapter 7', 'course': 'SWE 211'},
-      {'title': 'Revise Chapter 8', 'course': 'SWE 211'},
-    ];
-    final rescheduledTasks = [
-      {'title': 'Revise Chapter 1', 'course': 'SWE 343'},
-      {'title': 'Revise Chapter 2', 'course': 'SWE 343'},
-    ];
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _revisionPlansStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    final allCards = <Widget>[
-      ...completedTasks.map(
-        (t) => _buildTaskCard(
-          title: t['title']!,
-          course: t['course']!,
-          isCompleted: true,
-          isRescheduled: false,
-        ),
-      ),
-      ...pendingTasks.map(
-        (t) => _buildTaskCard(
-          title: t['title']!,
-          course: t['course']!,
-          isCompleted: false,
-          isRescheduled: false,
-        ),
-      ),
-      ...rescheduledTasks.map(
-        (t) => _buildTaskCard(
-          title: t['title']!,
-          course: t['course']!,
-          isCompleted: false,
-          isRescheduled: true,
-        ),
-      ),
-    ];
+        final selectedDate = _weekDays[_selectedDayIndex]['fullDate'] as DateTime;
+        final plansForDate = (snapshot.data ?? []).where((plan) {
+          final examDate = _tryParseDate(plan['examDate']);
+          if (examDate == null) return false;
+          final normalized = DateTime(examDate.year, examDate.month, examDate.day);
+          return normalized == selectedDate;
+        }).toList();
 
-    const spacing = 16.0;
-    const runSpacing = 16.0;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - spacing) / 2;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: runSpacing,
-          alignment: WrapAlignment.start,
-          children: allCards
-              .map((card) => SizedBox(
-                    width: cardWidth,
-                    child: card,
-                  ))
-              .toList(),
+        if (plansForDate.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F8F8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEAEAEA)),
+            ),
+            child: Text(
+              'No tasks for ${_formatDate(selectedDate)}.',
+              style: TextStyle(color: Colors.grey[700]),
+            ),
+          );
+        }
+
+        final allCards = plansForDate.map((plan) {
+          final status = (plan['status'] as String? ?? 'pending').toLowerCase();
+          final course = plan['folderName'] as String? ?? 'Course';
+          return _buildTaskCard(
+            title: 'Revision Plan',
+            course: course,
+            isCompleted: status == 'completed',
+            isRescheduled: status == 'error',
+          );
+        }).toList();
+
+        const spacing = 16.0;
+        const runSpacing = 16.0;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = (constraints.maxWidth - spacing) / 2;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: runSpacing,
+              alignment: WrapAlignment.start,
+              children: allCards
+                  .map((card) => SizedBox(width: cardWidth, child: card))
+                  .toList(),
+            );
+          },
         );
       },
     );
@@ -960,42 +1056,32 @@ class _DashBoardState extends State<DashBoard> {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Scaffold(
-      body: Row(
-        children: [
-          CustomSidebar(
-            selectedIndex: _selectedIndex,
-            onItemSelected: (index) {
-              const navNames = [
-                'Dashboard',
-                'Revision Plan',
-                'Snaps Board',
-                'Course Folder',
-                'Brain Games',
-                'Quiz',
-                'Profile',
-              ];
-              if (index >= 0 && index < navNames.length) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(navNames[index]),
-                    duration: const Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-          ),
-          Expanded(
-            child: Container(
-              color: Colors.white,
-              child: _getPageForIndex(_selectedIndex),
+      body: MediaQuery(
+        data: media.copyWith(
+          padding: EdgeInsets.zero,
+          viewPadding: EdgeInsets.zero,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CustomSidebar(
+              selectedIndex: _selectedIndex,
+              onItemSelected: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
             ),
-          ),
-        ],
+            Expanded(
+              child: Container(
+                color: Colors.white,
+                child: _getPageForIndex(_selectedIndex),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

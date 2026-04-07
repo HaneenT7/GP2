@@ -18,8 +18,8 @@ class CustomSidebar extends StatelessWidget {
     const sidebarRadius = Radius.circular(32); // rounded right corners
 
     const logoWidth = 173.0;
-    const logoHeight = 172.0;
-    const logoTopPadding = 12.0;
+    const logoHeight = 148.0;
+    const logoTopPadding = 0.0;
     const iconSize = 26.0;
     const navPadding = 10.0;
     const navMargin = 18.0;
@@ -65,7 +65,7 @@ class CustomSidebar extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 4),
 
           // Navigation Items – single column of evenly spaced icons
           _buildNavItem(Icons.dashboard, 0, 'Dashboard', iconSize, navPadding, navMargin),

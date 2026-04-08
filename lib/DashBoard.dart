@@ -419,32 +419,42 @@ class _DashBoardState extends State<DashBoard> {
   }
 
   Widget _buildQuizContent() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 6,
-            width: double.infinity,
-            color: const Color(0xFFB3E5FC),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          // This ensures the page is always scrollable for a better feel
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            // Forces the Column to be at least as tall as the screen
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildQuizHeader(),
-                const SizedBox(height: 32),
-                _buildQuizUploadZone(),
-                if (_selectedQuizFileName != null) ...[
-                  const SizedBox(height: 24),
-                  _buildSelectedFileAndStartButton(),
-                ],
+                Container(
+                  height: 6,
+                  width: double.infinity,
+                  color: const Color(0xFFB3E5FC),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildQuizHeader(),
+                      const SizedBox(height: 32),
+                      _buildQuizUploadZone(),
+                      if (_selectedQuizFileName != null) ...[
+                        const SizedBox(height: 24),
+                        _buildSelectedFileAndStartButton(),
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -494,34 +504,43 @@ class _DashBoardState extends State<DashBoard> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+          // Increased vertical padding to make the zone look more "full"
+          padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
+            color: Colors.grey[50], // Added a slight background color
+            border: Border.all(color: Colors.grey.shade300, width: 2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey[600]),
-              const SizedBox(height: 16),
+              Icon(Icons.cloud_upload_outlined, size: 56, color: Colors.purple.shade300),
+              const SizedBox(height: 20),
               Text(
-                'select your file or drag and drop',
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                'Select your file or drag and drop',
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[800]
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
-                'one pdf file accepted',
-                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                'Only PDF files are accepted',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
-              const SizedBox(height: 16),
-              Material(
-                color: const Color(0xFFE9D5FF),
-                borderRadius: BorderRadius.circular(8),
-                child: InkWell(
-                  onTap: _pickQuizFile,
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE9D5FF),
                   borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: Text('browse'),
+                ),
+                child: Text(
+                  'Browse Files',
+                  style: TextStyle(
+                    color: Colors.purple.shade900,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -531,69 +550,71 @@ class _DashBoardState extends State<DashBoard> {
       ),
     );
   }
-
-  Widget _buildSelectedFileAndStartButton() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _selectedQuizFileName!,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87,
+ Widget _buildSelectedFileAndStartButton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _selectedQuizFileName!,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            IconButton(
-              onPressed: _pickQuizFile,
-              icon: Icon(Icons.edit_outlined, size: 20, color: Colors.grey[600]),
-              tooltip: 'Change file',
-            ),
-            IconButton(
-              onPressed: () => setState(() {
-                _selectedQuizFileName = null;
-                _selectedQuizFileBytes = null;
-              }),
-              icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey[600]),
-              tooltip: 'Remove file',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Material(
-          color: const Color(0xFFE9D5FF),
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            onTap: _isGeneratingQuiz ? null : _startQuizFromPdf,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              IconButton(
+                onPressed: _pickQuizFile,
+                icon: const Icon(Icons.refresh, size: 20),
+                tooltip: 'Change file',
+              ),
+              IconButton(
+                onPressed: () => setState(() {
+                  _selectedQuizFileName = null;
+                  _selectedQuizFileBytes = null;
+                }),
+                icon: const Icon(Icons.close, size: 20),
+                tooltip: 'Remove',
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isGeneratingQuiz ? null : _startQuizFromPdf,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9333EA),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
               child: _isGeneratingQuiz
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.purple.shade800,
-                      ),
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : Text(
-                      'Start Your Quiz',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.purple.shade800,
-                      ),
+                  : const Text(
+                      'Generate Quiz Now',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

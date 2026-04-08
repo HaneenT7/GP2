@@ -136,7 +136,12 @@ class _QuizPageState extends State<QuizPage> {
         ),
       ),
 
-      body: Padding(
+      body: SafeArea(
+  child: SizedBox(
+    width: double.infinity,
+    height: double.infinity,
+    child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -181,7 +186,7 @@ class _QuizPageState extends State<QuizPage> {
 
             }).toList(),
 
-            const Spacer(),
+            const SizedBox(height: 30),
 
             SizedBox(
               width: double.infinity,
@@ -196,7 +201,7 @@ class _QuizPageState extends State<QuizPage> {
             )
           ],
         ),
-      ),
+      ),),)),
     );
   }
 }

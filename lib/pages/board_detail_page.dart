@@ -584,12 +584,6 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
               ),
             ),
           ),
-          IconButton(
-            onPressed: _showUploadModal,
-            icon: const Icon(Icons.upload),
-            color: Colors.white,
-          ),
-          const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: _snaps.isEmpty ? null : _showManageSnapsModal,
             style: ElevatedButton.styleFrom(

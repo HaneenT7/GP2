@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -666,6 +667,26 @@ Future<void> _toggleTaskCompletion(int taskIndex, bool completed) async {
       .collection('revisionPlans')
       .doc(widget.planId)
       .update({'dailyTasks': dataToSave});
+
+ // ── NEW: check if entire plan is complete for dashboard──────────────────────────────
+  final allTasks = dailyTasks
+      .expand((day) => (day['tasks'] as List<dynamic>? ?? []))
+      .toList();
+
+  final allDone = allTasks.isNotEmpty &&
+      allTasks.every((t) => t['completed'] == true);
+
+  if (allDone) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(user.uid)
+          .update({'completedPlans': FieldValue.increment(1)});
+    }
+  }
+  // ───────────────────────────────────────────────────────────────────────
+
 }
 
   Map<dynamic, dynamic>? _findDayData(List<dynamic> dailyTasks, DateTime date) {

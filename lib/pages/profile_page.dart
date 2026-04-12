@@ -1,9 +1,6 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
 import '../signIn.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -16,17 +13,17 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
 
   User? _user;
   String? _firstName;
   String? _lastName;
-  String? _photoUrl;
-  Uint8List? _localPhotoBytes;
   bool _loading = true;
-  bool _photoUploading = false;
   String? _error;
+
+  // Stats
+  List<int> _weeklyQuizzes = List.filled(7, 0);
+  int _completedPlans = 0;
+  double _successRate = 0;
 
   @override
   void initState() {
@@ -49,16 +46,18 @@ class _ProfilePageState extends State<ProfilePage> {
         return;
       }
       _user = user;
-      final doc = await _firestore
-          .collection('students')
-          .doc(user.uid)
-          .get();
+
+      // Load profile
+      final doc = await _firestore.collection('students').doc(user.uid).get();
       if (doc.exists) {
         final d = doc.data();
         _firstName = d?['firstName'] as String?;
         _lastName = d?['lastName'] as String?;
-        _photoUrl = d?['photoURL'] as String?;
+        _completedPlans = (d?['completedPlans'] as num?)?.toInt() ?? 0;
       }
+
+      // Load quiz results
+      await _loadQuizData(user.uid);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -66,6 +65,51 @@ class _ProfilePageState extends State<ProfilePage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadQuizData(String uid) async {
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final weekStart = DateTime(monday.year, monday.month, monday.day);
+    final weekEnd = weekStart.add(const Duration(days: 7));
+
+    // Weekly quizzes
+    final weekSnap = await _firestore
+        .collection('students')
+        .doc(uid)
+        .collection('quizResults')
+        .where(
+          'completedAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(weekStart),
+        )
+        .where('completedAt', isLessThan: Timestamp.fromDate(weekEnd))
+        .get();
+
+    final quizzes = List.filled(7, 0);
+    for (final doc in weekSnap.docs) {
+      final date = (doc.data()['completedAt'] as Timestamp).toDate();
+      final index = date.weekday - 1; // Mon=0 ... Sun=6
+      quizzes[index]++;
+    }
+    _weeklyQuizzes = quizzes;
+
+    // Overall success rate (all time)
+    final allSnap = await _firestore
+        .collection('students')
+        .doc(uid)
+        .collection('quizResults')
+        .get();
+
+    int totalCorrect = 0;
+    int totalQuestions = 0;
+    for (final doc in allSnap.docs) {
+      final d = doc.data();
+      totalCorrect += (d['correct'] as num?)?.toInt() ?? 0;
+      totalQuestions += (d['total'] as num?)?.toInt() ?? 0;
+    }
+    _successRate = totalQuestions > 0
+        ? (totalCorrect / totalQuestions) * 100
+        : 0;
   }
 
   String get _displayName {
@@ -77,47 +121,53 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = const Color(0xFFF5F0FA);
-    return Container(
-      color: bgColor,
-      child: _loading
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_error!, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: _loadUser,
-                        child: const Text('Retry'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  TextButton(onPressed: _loadUser, child: const Text('Retry')),
+                ],
+              ),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - 48,
                   ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildProfileHeader(),
-                      const SizedBox(height: 16),
-                      _buildLogOutButton(),
-                      const SizedBox(height: 24),
-                      _buildWeeklyActivityCard(),
-                      const SizedBox(height: 16),
-                      _buildSummaryCards(),
-                      const SizedBox(height: 16),
-                      _buildStreakCard(),
-                    ],
+                  child: IntrinsicHeight(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildProfileHeader(),
+                        const SizedBox(height: 24),
+                        _buildWeeklyActivityCard(),
+                        const SizedBox(height: 16),
+                        _buildSummaryCards(),
+                        const Spacer(),
+                        _buildLogOutButton(),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
                   ),
                 ),
+              ),
+            ),
     );
   }
 
   Widget _buildProfileHeader() {
-    final photoUrl = _photoUrl ?? _user?.photoURL;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -133,57 +183,13 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: _photoUploading ? null : _showPhotoSourceSheet,
-            child: Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                CircleAvatar(
-                  radius: 44,
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage: _localPhotoBytes != null
-                      ? MemoryImage(_localPhotoBytes!)
-                      : (photoUrl != null && photoUrl.isNotEmpty)
-                          ? NetworkImage(photoUrl)
-                          : null,
-                  child: _localPhotoBytes == null &&
-                          (photoUrl == null || photoUrl.isEmpty)
-                      ? Text(
-                          _displayName.isNotEmpty
-                              ? _displayName[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        )
-                      : null,
-                ),
-                if (_photoUploading)
-                  const Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF7C4DFF),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-              ],
+          const CircleAvatar(
+            radius: 44,
+            backgroundColor: Color.fromARGB(172, 241, 207, 223),
+            child: Icon(
+              Icons.person,
+              size: 44,
+              color: Color.fromARGB(255, 223, 164, 192),
             ),
           ),
           const SizedBox(width: 20),
@@ -203,20 +209,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 4),
                   Text(
                     _user!.email!,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade700,
-                    ),
+                    style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
                   ),
                 ],
-                const SizedBox(height: 4),
-                Text(
-                  'Tap photo to change',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
               ],
             ),
           ),
@@ -225,131 +220,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  void _showPhotoSourceSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from gallery'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAndUploadPhoto(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Take photo'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAndUploadPhoto(ImageSource.camera);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickAndUploadPhoto(ImageSource source) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
-      );
-      if (file == null || !mounted) return;
-      final bytes = await file.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _localPhotoBytes = bytes;
-        _photoUploading = true;
-      });
-      final ref = _storage.ref().child('profile_photos').child('${user.uid}.jpg');
-      await ref.putData(bytes);
-      final url = await ref.getDownloadURL();
-      await _firestore.collection('students').doc(user.uid).set(
-            {'photoURL': url},
-            SetOptions(merge: true),
-          );
-      if (mounted) {
-        setState(() {
-          _photoUrl = url;
-          _localPhotoBytes = null;
-          _photoUploading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _photoUploading = false;
-          _localPhotoBytes = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update photo: $e')),
-        );
-      }
-    }
-  }
-
-  Widget _buildLogOutButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _logOut,
-        icon: const Icon(Icons.logout, size: 20),
-        label: const Text('Log out'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF7C4DFF),
-          side: const BorderSide(color: Color(0xFF7C4DFF)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _logOut() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-    await _auth.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => SignInPage()),
-      (route) => false,
-    );
-  }
-
   Widget _buildWeeklyActivityCard() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final hours = [1.5, 2.0, 1.0, 2.5, 4.0, 1.5, 2.0];
-    const maxH = 5.0;
+    final maxQ = _weeklyQuizzes.reduce((a, b) => a > b ? a : b);
+    final peakIndex = _weeklyQuizzes.indexOf(maxQ);
     const barColor = Color(0xFFE8E0F0);
-    const barColorHighlight = Color(0xFF7C4DFF);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -382,23 +257,28 @@ class _ProfilePageState extends State<ProfilePage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: List.generate(7, (i) {
-                final h = hours[i];
-                final isHighlight = i == 4;
+                final q = _weeklyQuizzes[i];
+                final isHighlight = i == peakIndex && q > 0;
+                final barH = maxQ > 0
+                    ? ((q / maxQ) * 100).clamp(4.0, 100.0)
+                    : 4.0;
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     if (isHighlight)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         margin: const EdgeInsets.only(bottom: 6),
                         decoration: BoxDecoration(
                           color: Colors.black87,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
-                          '4 hours',
-                          style: TextStyle(
+                        child: Text(
+                          '$q quiz',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -407,11 +287,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     Container(
                       width: 28,
-                      height: (h / maxH) * 120,
+                      height: barH,
                       decoration: BoxDecoration(
-                        color: isHighlight ? barColorHighlight : barColor,
+                        color: isHighlight ? const Color(0xFF7C4DFF) : barColor,
                         borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6)),
+                          top: Radius.circular(6),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -440,8 +321,8 @@ class _ProfilePageState extends State<ProfilePage> {
           child: _buildSummaryCard(
             color: const Color(0xFF7C4DFF),
             icon: Icons.assignment_outlined,
-            label: 'Weekly learning time',
-            value: '3h 45m',
+            label: 'Completed Plans',
+            value: '$_completedPlans',
           ),
         ),
         const SizedBox(width: 16),
@@ -449,8 +330,10 @@ class _ProfilePageState extends State<ProfilePage> {
           child: _buildSummaryCard(
             color: const Color(0xFF2196F3),
             icon: Icons.rocket_launch_outlined,
-            label: 'Skill Master Chart',
-            value: 'Voca 80%',
+            label: 'Quiz Success Rate',
+            value: _successRate > 0
+                ? '${_successRate.toStringAsFixed(0)}%'
+                : 'No data yet',
           ),
         ),
       ],
@@ -503,62 +386,49 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildStreakCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+  Widget _buildLogOutButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _logOut,
+        icon: const Icon(Icons.logout, size: 20),
+        label: const Text('Log out'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF7C4DFF),
+          side: const BorderSide(color: Color(0xFF7C4DFF)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _logOut() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF176),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.bolt,
-              size: 36,
-              color: Color(0xFFF9A825),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Streak tracker',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '10-day learning streak!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1C1C1E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, color: Colors.grey.shade600, size: 28),
-        ],
-      ),
+    );
+    if (confirm != true || !mounted) return;
+    await _auth.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => SignInPage()),
+      (route) => false,
     );
   }
 }

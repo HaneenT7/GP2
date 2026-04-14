@@ -23,13 +23,13 @@ In [Firebase Console](https://console.firebase.google.com) → your project → 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/boards/{boardId}/snaps/{snapId} {
+    match /students/{userId}/boards/{boardId}/snaps/{snapId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    match /users/{userId}/boards/{boardId} {
+    match /students/{userId}/boards/{boardId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    match /users/{userId} {
+    match /students/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }

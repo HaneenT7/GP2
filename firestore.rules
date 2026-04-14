@@ -3,13 +3,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ----- Snaps Board: users can read/write only their own boards and snaps -----
-    match /users/{userId}/boards/{boardId}/snaps/{snapId} {
+    match /students/{userId}/boards/{boardId}/snaps/{snapId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    match /users/{userId}/boards/{boardId} {
+    match /students/{userId}/boards/{boardId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    match /users/{userId} {
+    match /students/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 

@@ -14,7 +14,7 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
-import 'pages/availability_calendar_dialog.dart';
+import 'RevPlanPage.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -408,13 +408,6 @@ Widget _buildExamCard({required String title, required String date, required Col
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Daily Tasks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            _buildConfigureButton(),
-          ],
-        ),
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -597,18 +590,6 @@ Widget _buildExamCard({required String title, required String date, required Col
     );
   }
 
-  Widget _buildConfigureButton() {
-    return OutlinedButton.icon(
-      onPressed: () => showDialog(context: context, builder: (context) =>  AvailabilityCalendarDialog()),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF9333EA),
-        side: const BorderSide(color: Color(0xFFE9D5FF), width: 2),
-        backgroundColor: const Color(0xFFFAF5FF),
-      ),
-      icon: const Icon(Icons.calendar_today, size: 18),
-      label: const Text('Configure Availability'),
-    );
-  }
 
   Widget _buildCalendarNavButtons() {
     return Row(

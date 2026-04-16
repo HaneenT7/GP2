@@ -5,6 +5,7 @@ import 'SetUpRevPlan.dart';
 import 'pages/RevisionPlanCalendarPage.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'pages/availability_calendar_dialog.dart';
 
 class RevPlanPage extends StatefulWidget {
   const RevPlanPage({super.key});
@@ -16,6 +17,19 @@ class RevPlanPage extends StatefulWidget {
 class _RevPlanPageState extends State<StatefulWidget> {
   int _selectedIndex = 1;
   bool _isSetupMode = false;
+
+  Widget _buildConfigureButton() {
+    return OutlinedButton.icon(
+      onPressed: () => showDialog(context: context, builder: (context) =>  AvailabilityCalendarDialog()),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF9333EA),
+        side: const BorderSide(color: Color(0xFFE9D5FF), width: 2),
+        backgroundColor: const Color(0xFFFAF5FF),
+      ),
+      icon: const Icon(Icons.calendar_today, size: 18),
+      label: const Text('Configure Availability'),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,9 +77,14 @@ class _RevPlanPageState extends State<StatefulWidget> {
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: ElevatedButton.icon(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildConfigureButton(),
+
+                      const SizedBox(width: 8),
+
+                     ElevatedButton.icon(
                       onPressed: () {
                         setState(() {
                           _isSetupMode = true;
@@ -83,6 +102,7 @@ class _RevPlanPageState extends State<StatefulWidget> {
                         ),
                       ),
                     ),
+                    ],
                   ),
                 ),
                 

@@ -37,5 +37,17 @@ service cloud.firestore {
       allow read, update, delete: if isOwnerOfFolder(resource.data.folderId);
       allow create: if isOwnerOfFolder(request.resource.data.folderId);
     }
+
+    // ----- Revision plans: n8n (Admin SDK) writes; app listens for same userId -----
+    match /revisionPlans/{planId} {
+      allow read: if request.auth != null &&
+        (!resource.exists || resource.data.userId == request.auth.uid);
+      // Let users update only their own plans from the app
+      // (e.g. checking tasks as completed, manual task moves).
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
+    }
   }
 }

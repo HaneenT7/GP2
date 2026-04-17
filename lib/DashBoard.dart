@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'widgets/custom_sidebar.dart';
 import 'pages/quiz_page.dart';
@@ -12,7 +13,8 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
-import 'pages/availability_calendar_dialog.dart'; // Adjust path as needed
+import 'pages/availability_calendar_dialog.dart';
+import 'pages/RevisionPlanCalendarPage.dart';
 
 
 class DashBoard extends StatefulWidget {
@@ -91,6 +93,64 @@ class _DashBoardState extends State<DashBoard> {
   DateTime? _tryParseDate(dynamic raw) {
     if (raw is Timestamp) return raw.toDate();
     if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  /// n8n / Firestore may use different keys than the app webhook payload.
+  DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
+    return _tryParseDate(plan['examDate']) ??
+        _tryParseDate(plan['exam_date']) ??
+        _tryParseDate(plan['examDateIso']);
+  }
+
+  String _folderNameFromPlan(Map<String, dynamic> plan) {
+    return plan['folderName'] as String? ??
+        plan['folder_name'] as String? ??
+        'Course';
+  }
+
+  /// Same shape as [RevisionPlanCalendarPage]: JSON array or list of day maps with `date` + `tasks`.
+  List<dynamic> _parseDailyTasksFromPlan(Map<String, dynamic> plan) {
+    final raw = plan['dailyTasks'];
+    if (raw == null) return [];
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List<dynamic>) return decoded;
+      } catch (_) {}
+      return [];
+    }
+    if (raw is List) return raw;
+    return [];
+  }
+
+  bool _isSameCalendarDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime? _parseTaskScheduleDay(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is String) {
+      final p = DateTime.tryParse(raw);
+      if (p != null) return p;
+    }
+    return null;
+  }
+
+  Map<dynamic, dynamic>? _findDayEntryForTasks(
+    List<dynamic> dailyTasks,
+    DateTime date,
+  ) {
+    final n = DateTime(date.year, date.month, date.day);
+    for (final day in dailyTasks) {
+      if (day is! Map) continue;
+      final map = Map<dynamic, dynamic>.from(day);
+      final dayDate = _parseTaskScheduleDay(map['date']);
+      if (dayDate != null && _isSameCalendarDay(dayDate, n)) {
+        return map;
+      }
+    }
     return null;
   }
 
@@ -268,13 +328,13 @@ class _DashBoardState extends State<DashBoard> {
                   final today = DateTime.now();
                   final startToday = DateTime(today.year, today.month, today.day);
                   final plans = (snapshot.data ?? [])
-                      .where((p) => _tryParseDate(p['examDate']) != null)
+                      .where((p) => _examDateFromPlan(p) != null)
                       .toList()
-                    ..sort((a, b) => _tryParseDate(a['examDate'])!
-                        .compareTo(_tryParseDate(b['examDate'])!));
+                    ..sort((a, b) => _examDateFromPlan(a)!
+                        .compareTo(_examDateFromPlan(b)!));
 
                   final upcoming = plans
-                      .where((p) => !_tryParseDate(p['examDate'])!.isBefore(startToday))
+                      .where((p) => !_examDateFromPlan(p)!.isBefore(startToday))
                       .take(2)
                       .toList();
 
@@ -299,9 +359,9 @@ class _DashBoardState extends State<DashBoard> {
                   return Column(
                     children: List.generate(upcoming.length, (index) {
                       final plan = upcoming[index];
-                      final examDate = _tryParseDate(plan['examDate'])!;
+                      final examDate = _examDateFromPlan(plan)!;
                       final title =
-                          '${(plan['folderName'] as String? ?? 'Course').toUpperCase()} EXAM';
+                          '${_folderNameFromPlan(plan).toUpperCase()} EXAM';
                       return Padding(
                         padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
                         child: _buildExamCard(
@@ -886,15 +946,17 @@ class _DashBoardState extends State<DashBoard> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final selectedDate = _weekDays[_selectedDayIndex]['fullDate'] as DateTime;
-        final plansForDate = (snapshot.data ?? []).where((plan) {
-          final examDate = _tryParseDate(plan['examDate']);
-          if (examDate == null) return false;
-          final normalized = DateTime(examDate.year, examDate.month, examDate.day);
-          return normalized == selectedDate;
-        }).toList();
+        final plans = List<Map<String, dynamic>>.from(snapshot.data ?? []);
+        plans.sort((a, b) {
+          final da = _examDateFromPlan(a);
+          final db = _examDateFromPlan(b);
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return da.compareTo(db);
+        });
 
-        if (plansForDate.isEmpty) {
+        if (plans.isEmpty) {
           return Container(
             width: double.infinity,
             padding: const EdgeInsets.all(18),
@@ -904,39 +966,225 @@ class _DashBoardState extends State<DashBoard> {
               border: Border.all(color: const Color(0xFFEAEAEA)),
             ),
             child: Text(
-              'No tasks for ${_formatDate(selectedDate)}.',
+              'No revision plans yet. Generate one from Revision Plan — tasks appear here after the plan is saved to your account.',
               style: TextStyle(color: Colors.grey[700]),
             ),
           );
         }
 
-        final allCards = plansForDate.map((plan) {
+        final selectedDate =
+            _weekDays[_selectedDayIndex]['fullDate'] as DateTime;
+
+        final studyRows = <Widget>[];
+        var anyPlanHasDailyTasks = false;
+
+        for (final plan in plans) {
+          final daily = _parseDailyTasksFromPlan(plan);
+          if (daily.isNotEmpty) anyPlanHasDailyTasks = true;
+          final dayEntry = _findDayEntryForTasks(daily, selectedDate);
+          final tasks = dayEntry?['tasks'] as List<dynamic>? ?? [];
+          final planId = plan['id'] as String?;
+          final folder = _folderNameFromPlan(plan);
+
+          for (final t in tasks) {
+            if (t is! Map) continue;
+            final m = Map<dynamic, dynamic>.from(t);
+            final title = (m['title'] ?? 'Task').toString();
+            final course = (m['course'] ?? folder).toString();
+            final done = m['completed'] == true;
+            studyRows.add(
+              _buildStudyTaskRow(
+                title: title,
+                course: course,
+                planLabel: folder,
+                isCompleted: done,
+                planId: planId,
+              ),
+            );
+          }
+        }
+
+        if (studyRows.isNotEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: studyRows,
+          );
+        }
+
+        if (anyPlanHasDailyTasks) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F8F8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEAEAEA)),
+            ),
+            child: Text(
+              'No tasks scheduled for ${_formatDate(selectedDate)}. '
+              'Choose another day in the week above, or open Revision Plan for the full calendar.',
+              style: TextStyle(color: Colors.grey[700]),
+            ),
+          );
+        }
+
+        final allCards = plans.map((plan) {
           final status = (plan['status'] as String? ?? 'pending').toLowerCase();
-          final course = plan['folderName'] as String? ?? 'Course';
+          final folder = _folderNameFromPlan(plan);
+          final exam = _examDateFromPlan(plan);
+          final subtitle = exam != null
+              ? 'Exam: ${_formatDate(exam)}'
+              : 'Revision plan';
           return _buildTaskCard(
-            title: 'Revision Plan',
-            course: course,
+            title: folder,
+            course: subtitle,
             isCompleted: status == 'completed',
             isRescheduled: status == 'error',
           );
         }).toList();
 
-        const spacing = 16.0;
-        const runSpacing = 16.0;
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final cardWidth = (constraints.maxWidth - spacing) / 2;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: runSpacing,
-              alignment: WrapAlignment.start,
-              children: allCards
-                  .map((card) => SizedBox(width: cardWidth, child: card))
-                  .toList(),
-            );
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF9E6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFE0B2)),
+              ),
+              child: Text(
+                'Your plan is saved, but daily tasks are not in this document yet. '
+                'Ask n8n to write a `dailyTasks` array (see Revision Plan page). '
+                'Below is a summary only.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+              ),
+            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 16.0;
+                const runSpacing = 16.0;
+                final cardWidth = (constraints.maxWidth - spacing) / 2;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: runSpacing,
+                  alignment: WrapAlignment.start,
+                  children: allCards
+                      .map((card) => SizedBox(width: cardWidth, child: card))
+                      .toList(),
+                );
+              },
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildStudyTaskRow({
+    required String title,
+    required String course,
+    required String planLabel,
+    required bool isCompleted,
+    required String? planId,
+  }) {
+    const greenCheck = Color(0xFF52C41A);
+    const greenBg = Color(0xFFE6F7E9);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: planId == null
+              ? null
+              : () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => RevisionPlanCalendarPage(planId: planId),
+                    ),
+                  );
+                },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isCompleted ? greenBg : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isCompleted
+                    ? Colors.transparent
+                    : const Color(0xFFE8E8E8),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  margin: const EdgeInsets.only(top: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isCompleted ? greenCheck : Colors.black87,
+                      width: isCompleted ? 2 : 1,
+                    ),
+                  ),
+                  child: isCompleted
+                      ? const Icon(Icons.check, size: 16, color: greenCheck)
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        course,
+                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        planLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.deepPurple.shade300,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: Colors.grey[400],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

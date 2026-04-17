@@ -3,6 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 
+import '../utils/revision_plan_overdue.dart';
+import '../services/revision_plan_regenerate_client.dart';
+import '../services/revision_plan_service.dart' show RevisionPlanResult;
+
 class RevisionPlanCalendarPage extends StatefulWidget {
   final String planId;
 
@@ -18,10 +22,14 @@ class RevisionPlanCalendarPage extends StatefulWidget {
 class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
   String _viewMode = 'day'; // 'day' or 'week'
   DateTime _selectedDate = DateTime.now();
+  final RevisionPlanRegenerateClient _regenerateClient =
+      RevisionPlanRegenerateClient();
+  bool _regeneratingPlan = false;
+  String _regenerateStatus = '';
   List<DateTime> _getWeekDays() {
-  final start = _getWeekStart(_selectedDate);
-  return List.generate(7, (i) => start.add(Duration(days: i)));
-}
+    final start = _getWeekStart(_selectedDate);
+    return List.generate(7, (i) => start.add(Duration(days: i)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,55 +79,248 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          IconButton(
+            tooltip: 'Regenerate plan',
+            icon: const Icon(Icons.auto_fix_high_outlined),
+            onPressed: _regeneratingPlan ? null : _openRegenerateOptions,
+          ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('revisionPlans')
-            .doc(widget.planId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Stack(
+        children: [
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('revisionPlans')
+                .doc(widget.planId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Plan not found'));
-          }
+              if (!snapshot.hasData || !snapshot.data!.exists) {
+                return const Center(child: Text('Plan not found'));
+              }
 
-          final planData = snapshot.data!.data() as Map<String, dynamic>;
-final rawTasks = planData['dailyTasks'];
-List<dynamic> dailyTasks = [];
-if (rawTasks is String) {
-  try {
-    dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
-  } catch (e) {
-    dailyTasks = [];
-  }
-} else if (rawTasks is List) {
-  dailyTasks = rawTasks;
-}
-          return Column(
-            children: [
-                _buildWeekNavigation(),
-                
-              // Date navigation
-              _buildDaysBar(dailyTasks),
-              
-              const Divider(height: 1),
-              
-              // Calendar view
-              Expanded(
-                child: _viewMode == 'day'
-                    ? _buildDayView(dailyTasks)
-                    : _buildWeekView(dailyTasks),
+              final planData = snapshot.data!.data() as Map<String, dynamic>;
+              final rawTasks = planData['dailyTasks'];
+              List<dynamic> dailyTasks = [];
+              if (rawTasks is String) {
+                try {
+                  dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
+                } catch (e) {
+                  dailyTasks = [];
+                }
+              } else if (rawTasks is List) {
+                dailyTasks = rawTasks;
+              }
+              final overdueCount = countOverdueTasks(dailyTasks);
+              return Column(
+                children: [
+                  _buildWeekNavigation(),
+                  if (overdueCount > 0)
+                    _buildOverdueBanner(overdueCount, planData),
+                  _buildDaysBar(dailyTasks),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _viewMode == 'day'
+                        ? _buildDayView(dailyTasks)
+                        : _buildWeekView(dailyTasks),
+                  ),
+                ],
+              );
+            },
+          ),
+          if (_regeneratingPlan) ...[
+            Positioned.fill(
+              child: ModalBarrier(
+                color: Colors.black26,
+                dismissible: false,
               ),
-            ],
-          );
-        },
+            ),
+            Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(_regenerateStatus),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
+  }
+
+  Future<void> _openRegenerateOptions() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .get();
+    if (!doc.exists || !mounted) return;
+    final planData = doc.data() as Map<String, dynamic>;
+    List<dynamic> dailyTasks = [];
+    final rawTasks = planData['dailyTasks'];
+    if (rawTasks is String) {
+      try {
+        dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
+      } catch (_) {}
+    } else if (rawTasks is List) {
+      dailyTasks = rawTasks;
+    }
+    final overdueCount = countOverdueTasks(dailyTasks);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Regenerate with AI',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose what to rebuild. Completed tasks stay unchanged in both modes.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Icon(Icons.event_busy, color: Colors.deepOrange.shade800),
+                title: const Text('Reschedule overdue tasks only'),
+                subtitle: Text(
+                  overdueCount > 0
+                      ? 'Moves incomplete tasks from past days into upcoming days.'
+                      : 'No overdue tasks right now.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                enabled: overdueCount > 0 && !_regeneratingPlan,
+                onTap: overdueCount == 0
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        _rescheduleOverdue(planData);
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_month, color: Color(0xFF4B3D8E)),
+                title: const Text('Regenerate full plan'),
+                subtitle: Text(
+                  'Rebuilds all incomplete work to fit availability and exam date.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmRegenerateFullPlan(planData);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRegenerateFullPlan(Map<String, dynamic> planData) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Regenerate full plan?'),
+        content: const Text(
+          'All incomplete tasks will be rescheduled from scratch while keeping '
+          'completed tasks as they are. This may change many future dates.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Regenerate'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _runRegenerate(
+      status: 'Regenerating full plan…',
+      action: () => _regenerateClient.regenerateFullPlan(
+        planId: widget.planId,
+        planData: planData,
+      ),
+      successMessage: 'Full plan updated.',
+    );
+  }
+
+  Future<void> _rescheduleOverdue(Map<String, dynamic> planData) async {
+    await _runRegenerate(
+      status: 'Rescheduling overdue tasks…',
+      action: () => _regenerateClient.rescheduleOverdueTasks(
+        planId: widget.planId,
+        planData: planData,
+      ),
+      successMessage: 'Plan updated. Overdue tasks were sent to reschedule.',
+    );
+  }
+
+  Future<void> _runRegenerate({
+    required String status,
+    required Future<RevisionPlanResult> Function() action,
+    required String successMessage,
+  }) async {
+    setState(() {
+      _regeneratingPlan = true;
+      _regenerateStatus = status;
+    });
+    try {
+      final result = await action();
+      if (!mounted) return;
+      if (result.status == 'completed') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage)),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.errorMessage ?? 'Regeneration failed'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+          ),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _regeneratingPlan = false;
+          _regenerateStatus = '';
+        });
+      }
+    }
   }
   Widget _buildWeekNavigation() {
   return Container(
@@ -176,6 +377,7 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
         final isSelected = _isSameDay(day, _selectedDate);
         final dayData = _findDayData(dailyTasks, day);
         final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
+        final hasOverdueOnDay = weekDayHasOverdueIncomplete(dailyTasks, day);
 
         return Expanded(
           child: Padding(
@@ -228,8 +430,21 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                       ],
                     ),
 
-                    // task indicator
-                    if (tasks.isNotEmpty)
+                    // Overdue (past day, incomplete) vs scheduled tasks
+                    if (hasOverdueOnDay)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.deepOrange,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    else if (tasks.isNotEmpty)
                       Positioned(
                         top: 4,
                         right: 4,
@@ -273,6 +488,7 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
 
     final tasks = dayData['tasks'] as List<dynamic>? ?? [];
     final availableMinutes = dayData['availableMinutes'] ?? 0;
+    final dayDate = DateTime.parse(dayData['date'] as String);
 
     if (tasks.isEmpty) {
       return Center(
@@ -356,8 +572,9 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
         // Tasks list
         ...tasks.asMap().entries.map((entry) {
           final index = entry.key;
-          final task = entry.value;
-          return _buildTaskCard(task, index);
+          final task = entry.value as Map<dynamic, dynamic>;
+          final isOverdue = isRevisionTaskOverdue(dayDate, task);
+          return _buildTaskCard(task, index, isOverdue: isOverdue);
         }).toList(),
       ],
     );
@@ -453,18 +670,25 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                       ),
                     )
                   else
-                    ...tasks.take(3).map((task) => Padding(
+                    ...tasks.take(3).map((task) {
+                      final t = task as Map<dynamic, dynamic>;
+                      final overdue = isRevisionTaskOverdue(day, t);
+                      return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(
                         children: [
                           Icon(
                             task['completed'] == true
                                 ? Icons.check_circle
-                                : Icons.radio_button_unchecked,
+                                : overdue
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.radio_button_unchecked,
                             size: 16,
                             color: task['completed'] == true
                                 ? Colors.green
-                                : Colors.grey,
+                                : overdue
+                                    ? Colors.deepOrange
+                                    : Colors.grey,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -477,7 +701,11 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                                     : null,
                                 color: task['completed'] == true
                                     ? Colors.grey
-                                    : Colors.black87,
+                                    : overdue
+                                        ? Colors.deepOrange.shade900
+                                        : Colors.black87,
+                                fontWeight:
+                                    overdue ? FontWeight.w600 : FontWeight.normal,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -485,7 +713,8 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                           ),
                         ],
                       ),
-                    )).toList(),
+                    );
+                    }).toList(),
                   
                   if (tasks.length > 3)
                     Padding(
@@ -506,11 +735,49 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
       },
     );
   }
-Widget _buildTaskCard(Map<dynamic, dynamic> task, int index) {
+Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
+    return Material(
+      color: Colors.deepOrange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.schedule, size: 20, color: Colors.deepOrange.shade800),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                count == 1
+                    ? '1 overdue task (past days, not completed)'
+                    : '$count overdue tasks (past days, not completed)',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.deepOrange.shade900,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _regeneratingPlan
+                  ? null
+                  : () => _rescheduleOverdue(planData),
+              child: Text(
+                _regeneratingPlan ? 'Working…' : 'Reschedule with AI',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.deepOrange.shade900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOverdue}) {
   final isCompleted = task['completed'] == true;
   final title = task['title'] ?? '';
   final course = task['course'] ?? 'Study Task';
-  final type = task['type'] ?? 'study';
 
   const greenCheck = Color(0xFF52C41A);
   const greenBg = Color(0xFFE6F7E9);
@@ -524,7 +791,12 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index) {
         color: isCompleted ? greenBg : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted ? Colors.transparent : const Color(0xFFE8E8E8),
+          color: isCompleted
+              ? Colors.transparent
+              : isOverdue
+                  ? Colors.deepOrange.shade300
+                  : const Color(0xFFE8E8E8),
+          width: isOverdue && !isCompleted ? 2 : 1,
         ),
         boxShadow: [
           BoxShadow(
@@ -569,15 +841,48 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: isCompleted ? Colors.grey : Colors.black87,
-                    decoration:
-                        isCompleted ? TextDecoration.lineThrough : null,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isCompleted
+                              ? Colors.grey
+                              : isOverdue
+                                  ? Colors.deepOrange.shade900
+                                  : Colors.black87,
+                          decoration: isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ),
+                    if (isOverdue && !isCompleted)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.deepOrange.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Overdue',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.deepOrange.shade900,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -592,6 +897,19 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index) {
           ),
 
           const SizedBox(width: 12),
+
+          Tooltip(
+            message: 'Move task',
+            child: IconButton(
+              icon: const Icon(Icons.drive_file_move_outline),
+              color: Colors.grey.shade700,
+              onPressed: () {
+                _pickAndMoveTask(index, title);
+              },
+            ),
+          ),
+
+          const SizedBox(width: 4),
 
           /// Take Quiz button
           Material(
@@ -624,48 +942,215 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index) {
   );
 }
 Future<void> _toggleTaskCompletion(int taskIndex, bool completed) async {
-  final planDoc = await FirebaseFirestore.instance
-      .collection('revisionPlans')
-      .doc(widget.planId)
-      .get();
+  try {
+    final planDoc = await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .get();
 
-  if (!planDoc.exists) return;
+    if (!planDoc.exists) return;
+
+    final planData = planDoc.data()!;
+    
+    // Safe decoding
+    final rawTasks = planData['dailyTasks'];
+    List<dynamic> dailyTasks = [];
+    bool wasString = rawTasks is String;
+
+    if (wasString) {
+      dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
+    } else {
+      dailyTasks = List<dynamic>.from(rawTasks ?? []);
+    }
+
+    // Find the day and update the task
+    for (var i = 0; i < dailyTasks.length; i++) {
+      final day = dailyTasks[i];
+      final dayDate = DateTime.parse(day['date']);
+      
+      if (_isSameDay(dayDate, _selectedDate)) {
+        final tasks = List<dynamic>.from(day['tasks']);
+        if (taskIndex < tasks.length) {
+          tasks[taskIndex]['completed'] = completed;
+          dailyTasks[i]['tasks'] = tasks;
+          break;
+        }
+      }
+    }
+
+    // Save back in the same format it was found (String or List)
+    dynamic dataToSave = wasString ? jsonEncode(dailyTasks) : dailyTasks;
+
+    await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .update({'dailyTasks': dataToSave});
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+        ),
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
+  }
+}
+
+Future<void> _pickAndMoveTask(int taskIndex, String taskTitle) async {
+  final targetDate = await showDatePicker(
+    context: context,
+    initialDate: _selectedDate,
+    firstDate: DateTime.now().subtract(const Duration(days: 365)),
+    lastDate: DateTime.now().add(const Duration(days: 3650)),
+    helpText: 'Move task to date',
+  );
+  if (targetDate == null || !mounted) return;
+
+  if (_isSameDay(targetDate, _selectedDate)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Task is already on this date.')),
+    );
+    return;
+  }
+
+  await _moveTaskToDate(
+    taskIndex: taskIndex,
+    fromDate: _selectedDate,
+    toDate: targetDate,
+    taskTitle: taskTitle,
+  );
+}
+
+String _toIsoDate(DateTime date) {
+  final y = date.year.toString().padLeft(4, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  final d = date.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+Future<void> _moveTaskToDate({
+  required int taskIndex,
+  required DateTime fromDate,
+  required DateTime toDate,
+  required String taskTitle,
+}) async {
+  final planRef = FirebaseFirestore.instance
+      .collection('revisionPlans')
+      .doc(widget.planId);
+  final planDoc = await planRef.get();
+  if (!planDoc.exists || !mounted) return;
 
   final planData = planDoc.data()!;
-  
-  // Safe decoding
   final rawTasks = planData['dailyTasks'];
-  List<dynamic> dailyTasks = [];
-  bool wasString = rawTasks is String;
+  final wasString = rawTasks is String;
 
-  if (wasString) {
+  List<dynamic> dailyTasks = [];
+  if (rawTasks is String) {
     dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
   } else {
     dailyTasks = List<dynamic>.from(rawTasks ?? []);
   }
 
-  // Find the day and update the task
+  int sourceDayIndex = -1;
   for (var i = 0; i < dailyTasks.length; i++) {
-    final day = dailyTasks[i];
-    final dayDate = DateTime.parse(day['date']);
-    
-    if (_isSameDay(dayDate, _selectedDate)) {
-      final tasks = List<dynamic>.from(day['tasks']);
-      if (taskIndex < tasks.length) {
-        tasks[taskIndex]['completed'] = completed;
-        dailyTasks[i]['tasks'] = tasks;
-        break;
-      }
+    final day = dailyTasks[i] as Map<dynamic, dynamic>;
+    final dayDate = DateTime.tryParse(day['date']?.toString() ?? '');
+    if (dayDate != null && _isSameDay(dayDate, fromDate)) {
+      sourceDayIndex = i;
+      break;
     }
   }
 
-  // Save back in the same format it was found (String or List)
-  dynamic dataToSave = wasString ? jsonEncode(dailyTasks) : dailyTasks;
+  if (sourceDayIndex == -1) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not find source day for this task.')),
+    );
+    return;
+  }
 
-  await FirebaseFirestore.instance
-      .collection('revisionPlans')
-      .doc(widget.planId)
-      .update({'dailyTasks': dataToSave});
+  final sourceDay = Map<String, dynamic>.from(
+    dailyTasks[sourceDayIndex] as Map<dynamic, dynamic>,
+  );
+  final sourceTasks = List<dynamic>.from(sourceDay['tasks'] ?? []);
+  if (taskIndex < 0 || taskIndex >= sourceTasks.length) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not find selected task.')),
+    );
+    return;
+  }
+
+  final movedTask = Map<String, dynamic>.from(
+    sourceTasks.removeAt(taskIndex) as Map<dynamic, dynamic>,
+  );
+  sourceDay['tasks'] = sourceTasks;
+  dailyTasks[sourceDayIndex] = sourceDay;
+
+  int targetDayIndex = -1;
+  for (var i = 0; i < dailyTasks.length; i++) {
+    final day = dailyTasks[i] as Map<dynamic, dynamic>;
+    final dayDate = DateTime.tryParse(day['date']?.toString() ?? '');
+    if (dayDate != null && _isSameDay(dayDate, toDate)) {
+      targetDayIndex = i;
+      break;
+    }
+  }
+
+  if (targetDayIndex == -1) {
+    dailyTasks.add({
+      'date': _toIsoDate(toDate),
+      'day': DateFormat('EEEE').format(toDate),
+      'availableMinutes': 0,
+      'tasks': [movedTask],
+    });
+  } else {
+    final targetDay = Map<String, dynamic>.from(
+      dailyTasks[targetDayIndex] as Map<dynamic, dynamic>,
+    );
+    final targetTasks = List<dynamic>.from(targetDay['tasks'] ?? []);
+    targetTasks.add(movedTask);
+    targetDay['tasks'] = targetTasks;
+    dailyTasks[targetDayIndex] = targetDay;
+  }
+
+  dailyTasks.sort((a, b) {
+    final ad = DateTime.tryParse((a as Map<dynamic, dynamic>)['date']?.toString() ?? '');
+    final bd = DateTime.tryParse((b as Map<dynamic, dynamic>)['date']?.toString() ?? '');
+    if (ad == null && bd == null) return 0;
+    if (ad == null) return 1;
+    if (bd == null) return -1;
+    return ad.compareTo(bd);
+  });
+
+  try {
+    final dataToSave = wasString ? jsonEncode(dailyTasks) : dailyTasks;
+    await planRef.update({'dailyTasks': dataToSave});
+
+    if (!mounted) return;
+    setState(() {
+      _selectedDate = DateTime(toDate.year, toDate.month, toDate.day);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Moved "${taskTitle.isEmpty ? 'task' : taskTitle}" to ${DateFormat('MMM d').format(toDate)}.',
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Could not move task: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}',
+        ),
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
+  }
 }
 
   Map<dynamic, dynamic>? _findDayData(List<dynamic> dailyTasks, DateTime date) {

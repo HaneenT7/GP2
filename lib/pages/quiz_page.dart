@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class QuizPage extends StatefulWidget {
   final List quiz;
@@ -10,6 +12,8 @@ class QuizPage extends StatefulWidget {
 }
 
 class _QuizPageState extends State<QuizPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   int currentQuestion = 0;
   String? selectedAnswer;
@@ -23,8 +27,25 @@ class _QuizPageState extends State<QuizPage> {
     });
   }
 
-  void nextQuestion() {
+  Future<void> _saveQuizResult() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      await _firestore
+          .collection('students')
+          .doc(user.uid)
+          .collection('quizResults')
+          .add({
+            'correct': score,
+            'total': widget.quiz.length,
+            'completedAt': Timestamp.now(),
+          });
+    } catch (e) {
+      debugPrint('Failed to save quiz result: $e');
+    }
+  }
 
+  void nextQuestion() {
     final correctAnswer = widget.quiz[currentQuestion]["answer"];
 
     if (selectedAnswer == correctAnswer) {
@@ -32,14 +53,12 @@ class _QuizPageState extends State<QuizPage> {
     }
 
     if (currentQuestion < widget.quiz.length - 1) {
-
       setState(() {
         currentQuestion++;
         selectedAnswer = null;
       });
-
     } else {
-
+      _saveQuizResult();
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
@@ -52,7 +71,7 @@ class _QuizPageState extends State<QuizPage> {
                 Navigator.pop(context);
               },
               child: const Text("Close"),
-            )
+            ),
           ],
         ),
       );
@@ -61,7 +80,6 @@ class _QuizPageState extends State<QuizPage> {
 
   @override
   Widget build(BuildContext context) {
-
     /// شاشة البداية
     if (!_quizStarted) {
       return Scaffold(
@@ -78,9 +96,11 @@ class _QuizPageState extends State<QuizPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.quiz,
-                    size: 64,
-                    color: Theme.of(context).primaryColor),
+                Icon(
+                  Icons.quiz,
+                  size: 64,
+                  color: Theme.of(context).primaryColor,
+                ),
 
                 const SizedBox(height: 24),
 
@@ -118,9 +138,7 @@ class _QuizPageState extends State<QuizPage> {
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        body: const Center(
-          child: Text("No questions available. Try again."),
-        ),
+        body: const Center(child: Text("No questions available. Try again.")),
       );
     }
 
@@ -136,65 +154,70 @@ class _QuizPageState extends State<QuizPage> {
         ),
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
+      body: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          height: double.infinity,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: (currentQuestion + 1) / widget.quiz.length,
+                  ),
 
-            LinearProgressIndicator(
-              value: (currentQuestion + 1) / widget.quiz.length,
-            ),
+                  const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
+                  Text(
+                    "Question ${currentQuestion + 1} / ${widget.quiz.length}",
+                    style: const TextStyle(fontSize: 16),
+                  ),
 
-            Text(
-              "Question ${currentQuestion + 1} / ${widget.quiz.length}",
-              style: const TextStyle(fontSize: 16),
-            ),
+                  const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
+                  Text(
+                    question["question"],
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
 
-            Text(
-              question["question"],
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                  const SizedBox(height: 20),
+
+                  ...question["options"].map<Widget>((option) {
+                    return Card(
+                      child: RadioListTile(
+                        value: option,
+                        groupValue: selectedAnswer,
+                        onChanged: (value) {
+                          setState(() {
+                            selectedAnswer = value.toString();
+                          });
+                        },
+                        title: Text(option),
+                      ),
+                    );
+                  }).toList(),
+
+                  const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: selectedAnswer == null ? null : nextQuestion,
+                      child: Text(
+                        currentQuestion == widget.quiz.length - 1
+                            ? "Finish"
+                            : "Next",
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            ...question["options"].map<Widget>((option) {
-
-              return Card(
-                child: RadioListTile(
-                  value: option,
-                  groupValue: selectedAnswer,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedAnswer = value.toString();
-                    });
-                  },
-                  title: Text(option),
-                ),
-              );
-
-            }).toList(),
-
-            const Spacer(),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: selectedAnswer == null ? null : nextQuestion,
-                child: Text(
-                  currentQuestion == widget.quiz.length - 1
-                      ? "Finish"
-                      : "Next",
-                ),
-              ),
-            )
-          ],
+          ),
         ),
       ),
     );

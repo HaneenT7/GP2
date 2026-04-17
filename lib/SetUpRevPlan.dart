@@ -17,6 +17,9 @@ class SetUpRevPlan extends StatefulWidget {
   State<StatefulWidget> createState() => _SetUpRevPlanState();
 }
 
+/// Watad brand purple (buttons, accents).
+const Color _watadPurple = Color(0xFF423066);
+
 class _SetUpRevPlanState extends State<SetUpRevPlan> {
   final FolderService _folderService = FolderService();
   final FileService _fileService = FileService();
@@ -24,8 +27,20 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
 
   CourseFolder? _selectedFolder;
   final Set<String> _selectedFileIds = {};
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
+  /// First day of the month currently shown in the exam-date calendar.
+  late DateTime _calendarDisplayMonth;
   bool _isGenerating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = _dateOnly(DateTime.now());
+    _selectedDate = today;
+    _calendarDisplayMonth = DateTime(today.year, today.month, 1);
+  }
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   @override
   Widget build(BuildContext context) {
@@ -89,50 +104,11 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.grey.shade200),
                       ),
-                      child: Theme(
-                        data: ThemeData.light().copyWith(
-                          colorScheme: ColorScheme.light(
-                            primary: const Color(0xFF423066),
-                            onPrimary: const Color(0xFF423066),
-                            surface: const Color(0xFFF9F9F9),
-                            onSurface: Colors.black,
-                          ),
-                          datePickerTheme: DatePickerThemeData(
-                            dayForegroundColor: WidgetStateProperty.resolveWith(
-                              (states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return const Color.fromARGB(
-                                    255,
-                                    118,
-                                    30,
-                                    219,
-                                  );
-                                }
-                                return Colors.black;
-                              },
-                            ),
-                            dayBackgroundColor: WidgetStateProperty.resolveWith(
-                              (states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return const Color(0xFF423066);
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ),
-                        child: CalendarDatePicker(
-                          key: ValueKey(
-                            '${_selectedDate.year}-${_selectedDate.month}-${_selectedDate.day}',
-                          ),
-                          initialDate: _selectedDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                          onDateChanged: (DateTime date) {
-                            setState(() => _selectedDate = date);
-                          },
-                        ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
                       ),
+                      child: _buildExamDateCalendar(),
                     ),
                   ),
                   const SizedBox(height: 100),
@@ -166,7 +142,7 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
               ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF423066),
+              backgroundColor: _watadPurple,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -181,6 +157,222 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
               dismissible: false,
             ),
           ),
+      ],
+    );
+  }
+
+  String _monthYearLabel(int year, int month) {
+    const names = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${names[month - 1]} $year';
+  }
+
+  bool _canGoToPreviousMonth(DateTime today) {
+    final cur = DateTime(
+      _calendarDisplayMonth.year,
+      _calendarDisplayMonth.month,
+      1,
+    );
+    final firstOfTodayMonth = DateTime(today.year, today.month, 1);
+    return cur.isAfter(firstOfTodayMonth);
+  }
+
+  Widget _buildDayCell(DateTime date, DateTime today) {
+    final d = _dateOnly(date);
+    final isPast = d.isBefore(today);
+    final isToday = d == today;
+    final isSelected = d == _dateOnly(_selectedDate);
+
+    if (isPast) {
+      return Center(
+        child: Text(
+          '${date.day}',
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            decoration: TextDecoration.lineThrough,
+            decorationColor: Colors.grey.shade600,
+            fontSize: 15,
+          ),
+        ),
+      );
+    }
+
+    void select() {
+      setState(() => _selectedDate = d);
+    }
+
+    if (isSelected) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: select,
+          customBorder: const CircleBorder(),
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: _watadPurple,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                '${date.day}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (isToday) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: select,
+          customBorder: const CircleBorder(),
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: _watadPurple, width: 2),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                '${date.day}',
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: select,
+        customBorder: const CircleBorder(),
+        child: Center(
+          child: Text(
+            '${date.day}',
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExamDateCalendar() {
+    final today = _dateOnly(DateTime.now());
+    final y = _calendarDisplayMonth.year;
+    final m = _calendarDisplayMonth.month;
+    final daysInMonth = DateTime(y, m + 1, 0).day;
+    final firstWeekday = DateTime(y, m, 1).weekday;
+    final leading = firstWeekday % 7;
+    final cellCount = ((leading + daysInMonth + 6) ~/ 7) * 7;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: _canGoToPreviousMonth(today)
+                  ? () => setState(() {
+                        _calendarDisplayMonth = DateTime(y, m - 1, 1);
+                      })
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Text(
+                _monthYearLabel(y, m),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() {
+                _calendarDisplayMonth = DateTime(y, m + 1, 1);
+              }),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+              .map(
+                (s) => SizedBox(
+                  width: 36,
+                  child: Text(
+                    s,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              childAspectRatio: 1.15,
+            ),
+            itemCount: cellCount,
+            itemBuilder: (context, index) {
+              if (index < leading) {
+                return const SizedBox.shrink();
+              }
+              final dayNum = index - leading + 1;
+              if (dayNum > daysInMonth) {
+                return const SizedBox.shrink();
+              }
+              return _buildDayCell(DateTime(y, m, dayNum), today);
+            },
+          ),
+        ),
       ],
     );
   }
@@ -454,9 +646,7 @@ final result = await _revisionPlanService.generatePlan(request);
                             }
                           });
                         },
-                        selectedColor: const Color(
-                          0xFF423066,
-                        ).withOpacity(0.85),
+                        selectedColor: _watadPurple.withOpacity(0.85),
                         checkmarkColor: Colors.white,
                       );
                     }).toList(),

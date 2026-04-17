@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<List<dynamic>> generateQuiz(String text) async {
-  const apiKey = "AIzaSyCnUQpxKOhjHmys-f1-c9CgZIcaCJ2ztPY";
+  final apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 
   final url = Uri.parse(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey",

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'board_detail_page.dart';
 
 class SnapsBoardPage extends StatefulWidget {
@@ -9,11 +11,108 @@ class SnapsBoardPage extends StatefulWidget {
 }
 
 class _SnapsBoardPageState extends State<SnapsBoardPage> {
-  final List<String> _boards = ['Math 106', 'SWE 434', 'SWE 211', 'SWE477'];
+  // ── CHANGED: replaced hardcoded list with empty list + Firestore ──
+  final List<Map<String, String>> _boards = []; // {id, name}
+  bool _isLoading = true;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   String? _selectedBoardName;
+  String? _selectedBoardId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBoards(); // ── CHANGED: load from Firestore on startup ──
+  }
+
+  // ── CHANGED: fetch boards from Firestore ──
+  Future<void> _loadBoards() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+    try {
+      final snapshot = await _firestore
+          .collection('students')
+          .doc(userId)
+          .collection('boards')
+          .orderBy('createdAt')
+          .get();
+
+      setState(() {
+        _boards.clear();
+        for (var doc in snapshot.docs) {
+          _boards.add({'id': doc.id, 'name': doc.data()['name'] ?? doc.id});
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading boards: $e');
+      setState(() => _isLoading = false);
+    }
+  }
 
   String _normalizeName(String name) {
     return name.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  // ── use board name as document ID to stay consistent with old data ──
+  Future<void> _createBoard(String name) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    await _firestore
+        .collection('students')
+        .doc(userId)
+        .collection('boards')
+        .doc(name) // ← name is the document ID
+        .set({
+      'name': name,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    setState(() {
+      _boards.add({'id': name, 'name': name});
+    });
+  }
+
+  // ── CHANGED: rename board in Firestore ──
+  Future<void> _renameBoard(int index, String newName) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    final boardId = _boards[index]['id']!;
+    await _firestore
+        .collection('students')
+        .doc(userId)
+        .collection('boards')
+        .doc(boardId)
+        .update({'name': newName});
+
+    setState(() {
+      _boards[index] = {'id': boardId, 'name': newName};
+    });
+  }
+
+  // ── CHANGED: delete board from Firestore ──
+  Future<void> _deleteBoard(int index) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    final boardId = _boards[index]['id']!;
+    await _firestore
+        .collection('students')
+        .doc(userId)
+        .collection('boards')
+        .doc(boardId)
+        .delete();
+
+    setState(() {
+      _boards.removeAt(index);
+    });
   }
 
   void _openCreateBoardModal() {
@@ -21,12 +120,13 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => _CreateBoardModal(
-        onOk: (name) {
+        onOk: (name) async {
           final normalizedName = _normalizeName(name ?? '');
           if (normalizedName.isEmpty) return;
 
           final isDuplicate = _boards.any(
-            (board) => _normalizeName(board).toLowerCase() == normalizedName.toLowerCase(),
+            (b) => _normalizeName(b['name']!).toLowerCase() ==
+                normalizedName.toLowerCase(),
           );
           if (isDuplicate) {
             _showDuplicateNameError(normalizedName);
@@ -34,9 +134,7 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
           }
 
           Navigator.pop(context);
-          setState(() {
-            _boards.add(normalizedName);
-          });
+          await _createBoard(normalizedName); // ── CHANGED ──
           _showSuccessModal();
         },
         onClose: () => Navigator.pop(context),
@@ -77,13 +175,15 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
       context: context,
       builder: (context) => _RenameBoardModal(
         currentName: currentName,
-        onOk: (newName) {
+        onOk: (newName) async {
           final normalizedName = _normalizeName(newName ?? '');
           if (normalizedName.isEmpty) return;
 
           final isDuplicate = _boards.asMap().entries.any(
-            (e) => e.key != index &&
-                _normalizeName(e.value).toLowerCase() == normalizedName.toLowerCase(),
+            (e) =>
+                e.key != index &&
+                _normalizeName(e.value['name']!).toLowerCase() ==
+                    normalizedName.toLowerCase(),
           );
           if (isDuplicate) {
             _showDuplicateNameError(normalizedName);
@@ -91,9 +191,7 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
           }
 
           Navigator.pop(context);
-          setState(() {
-            _boards[index] = normalizedName;
-          });
+          await _renameBoard(index, normalizedName); // ── CHANGED ──
         },
         onClose: () => Navigator.pop(context),
       ),
@@ -106,7 +204,7 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
       builder: (context) => AlertDialog(
         title: const Text('Delete Board'),
         content: Text(
-          'Are you sure you want to delete "${_boards[index]}"?',
+          'Are you sure you want to delete "${_boards[index]['name']}"?',
         ),
         actions: [
           TextButton(
@@ -114,15 +212,11 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              setState(() {
-                _boards.removeAt(index);
-              });
+              await _deleteBoard(index); // ── CHANGED ──
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -132,10 +226,15 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_selectedBoardName != null) {
+    // ── CHANGED: navigate using boardId so detail page uses correct Firestore doc ──
+    if (_selectedBoardName != null && _selectedBoardId != null) {
       return BoardDetailPage(
         boardName: _selectedBoardName!,
-        onBack: () => setState(() => _selectedBoardName = null),
+        boardId: _selectedBoardId!, // ── CHANGED: pass boardId ──
+        onBack: () => setState(() {
+          _selectedBoardName = null;
+          _selectedBoardId = null;
+        }),
       );
     }
 
@@ -147,11 +246,18 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
         children: [
           _buildHeader(),
           const SizedBox(height: 28),
-          Expanded(child: LayoutBuilder(
-            builder: (context, constraints) {
-              return _buildBoardsGrid(constraints.maxWidth, constraints.maxHeight);
-            },
-          )),
+          // ── CHANGED: show loading spinner while fetching ──
+          _isLoading
+              ? const Expanded(
+                  child: Center(child: CircularProgressIndicator()))
+              : Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return _buildBoardsGrid(
+                          constraints.maxWidth, constraints.maxHeight);
+                    },
+                  ),
+                ),
         ],
       ),
     );
@@ -178,7 +284,8 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: purpleDark,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -190,11 +297,8 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Icon(
-                  Icons.notifications_outlined,
-                  size: 28,
-                  color: Colors.grey[700],
-                ),
+                Icon(Icons.notifications_outlined,
+                    size: 28, color: Colors.grey[700]),
                 Positioned(
                   top: 0,
                   right: 0,
@@ -232,15 +336,22 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
       itemCount: _boards.length,
       itemBuilder: (context, index) {
         return _BoardCard(
-          name: _boards[index],
-          onTap: () => setState(() => _selectedBoardName = _boards[index]),
-          onRename: () => _showRenameDialog(index, _boards[index]),
+          name: _boards[index]['name']!,
+          // ── CHANGED: pass boardId when opening detail page ──
+          onTap: () => setState(() {
+            _selectedBoardName = _boards[index]['name'];
+            _selectedBoardId = _boards[index]['id'];
+          }),
+          onRename: () =>
+              _showRenameDialog(index, _boards[index]['name']!),
           onDelete: () => _showDeleteConfirmation(index),
         );
       },
     );
   }
 }
+
+// ── No changes below this line ──
 
 class _BoardCard extends StatelessWidget {
   final String name;
@@ -261,84 +372,75 @@ class _BoardCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: lightPurple,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            child: Icon(
-              Icons.computer_outlined,
-              size: 20,
-              color: const Color(0xFF6B46C1),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: lightPurple,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: Colors.grey[800]),
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              onSelected: (value) {
-                if (value == 'rename') onRename();
-                if (value == 'delete') onDelete();
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'rename',
-                  child: Row(
-                    children: [
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              child: Icon(Icons.computer_outlined,
+                  size: 20, color: const Color(0xFF6B46C1)),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: Colors.grey[800]),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                onSelected: (value) {
+                  if (value == 'rename') onRename();
+                  if (value == 'delete') onDelete();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'rename',
+                    child: Row(children: [
                       Icon(Icons.edit, size: 20),
                       SizedBox(width: 12),
                       Text('Rename'),
-                    ],
+                    ]),
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(children: [
                       Icon(Icons.delete_outline, size: 20),
                       SizedBox(width: 12),
                       Text('Delete'),
-                    ],
+                    ]),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Center(
-            child: Text(
-              name,
+            Center(
+              child: Text(
+                name,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.black,
                 ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 }
-
 
 class _CreateBoardModal extends StatefulWidget {
   final void Function(String?) onOk;
@@ -385,11 +487,8 @@ class _CreateBoardModalState extends State<_CreateBoardModal> {
                         color: const Color(0xFFDDD6FE),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
-                        Icons.computer,
-                        size: 32,
-                        color: Colors.white,
-                      ),
+                      child: const Icon(Icons.computer,
+                          size: 32, color: Colors.white),
                     ),
                   ),
                   Positioned(
@@ -397,7 +496,8 @@ class _CreateBoardModalState extends State<_CreateBoardModal> {
                     right: 0,
                     child: IconButton(
                       onPressed: widget.onClose,
-                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 20),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
@@ -409,10 +509,12 @@ class _CreateBoardModalState extends State<_CreateBoardModal> {
                 controller: _controller,
                 decoration: InputDecoration(
                   hintText: 'Board Name',
-                  hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  hintStyle:
+                      TextStyle(color: Colors.grey[600], fontSize: 14),
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: Colors.grey[300]!),
@@ -435,8 +537,7 @@ class _CreateBoardModalState extends State<_CreateBoardModal> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('Ok'),
                 ),
@@ -495,9 +596,7 @@ class _RenameBoardModalState extends State<_RenameBoardModal> {
       ),
       actions: [
         TextButton(
-          onPressed: widget.onClose,
-          child: const Text('Cancel'),
-        ),
+            onPressed: widget.onClose, child: const Text('Cancel')),
         ElevatedButton(
           onPressed: () => widget.onOk(_controller.text),
           style: ElevatedButton.styleFrom(
@@ -532,33 +631,25 @@ class _SuccessModal extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE9D5FF),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE9D5FF),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.check,
-                size: 44,
-                color: lightBlue,
-              ),
+              child: const Icon(Icons.check, size: 44, color: lightBlue),
             ),
             const SizedBox(height: 20),
             const Text(
               'New Snaps Board Created!',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               "You can find this board created among all the boards.",
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -571,8 +662,7 @@ class _SuccessModal extends StatelessWidget {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 child: const Text('Ok'),
               ),

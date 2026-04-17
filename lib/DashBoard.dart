@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:intl/intl.dart'; 
 import 'widgets/custom_sidebar.dart';
 import 'pages/quiz_page.dart';
 import 'services/pdf_text_extractor.dart';
@@ -13,7 +14,6 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
-import 'pages/availability_calendar_dialog.dart';
 import 'pages/RevisionPlanCalendarPage.dart';
 
 
@@ -26,7 +26,11 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
-  int _selectedDayIndex = 3;
+  
+  // Dynamic Calendar State
+  late List<DateTime> _weekDates;
+  late int _selectedDayIndex;
+  
   String _firstName = '';
   String? _selectedQuizFileName;
   Uint8List? _selectedQuizFileBytes;
@@ -39,6 +43,14 @@ class _DashBoardState extends State<DashBoard> {
   void initState() {
     super.initState();
     _loadUserName();
+    _initializeCalendar();
+  }
+
+  void _initializeCalendar() {
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    _weekDates = List.generate(7, (index) => monday.add(Duration(days: index)));
+    _selectedDayIndex = now.weekday - 1;
   }
 
   Future<void> _loadUserName() async {
@@ -204,7 +216,12 @@ class _DashBoardState extends State<DashBoard> {
   }
 
   Widget _buildDashboardContent() {
+    return LayoutBuilder(
+  builder: (context, constraints) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(), // Keeps scroll active
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -226,7 +243,7 @@ class _DashBoardState extends State<DashBoard> {
           ),
         ],
       ),
-    );
+    ),); },);
   }
 
   Widget _buildHeader() {
@@ -279,7 +296,7 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
-  Widget _buildUpcomingExamsAndQuote() {
+Widget _buildUpcomingExamsAndQuote() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -287,30 +304,19 @@ class _DashBoardState extends State<DashBoard> {
           flex: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.school_outlined,
-                    size: 22,
-                    color: Colors.purple.shade300,
-                  ),
+                  Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
                   const SizedBox(width: 8),
                   const Text(
                     'Upcoming Exams',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black),
                   ),
-                  Text(
+                  const Text(
                     ' *',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red[700],
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red),
                   ),
                 ],
               ),
@@ -386,11 +392,7 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
-  Widget _buildExamCard({
-    required String title,
-    required String date,
-    required Color color,
-  }) {
+Widget _buildExamCard({required String title, required String date, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
@@ -421,6 +423,20 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
+  // Helper to maintain UI consistency during loading/empty states
+  Widget _buildExamPlaceholder({required Widget child}) {
+    return Container(
+      height: 110,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Center(child: child),
+    );
+  }
+
   Widget _buildQuoteCard() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
@@ -445,19 +461,13 @@ class _DashBoardState extends State<DashBoard> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Image.asset(
-                'assets/images/quote_mark.png',
-                width: 48,
-                height: 48,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Text(
-                  '"',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    height: 1,
-                  ),
+              const Text(
+                '"',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1,
                 ),
               ),
               Expanded(
@@ -478,16 +488,10 @@ class _DashBoardState extends State<DashBoard> {
           Positioned(
             right: 0,
             bottom: -8,
-            child: Image.asset(
-              'assets/images/dashboard_brain.png',
-              width: 64,
-              height: 64,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.psychology,
-                size: 56,
-                color: const Color(0xFF7C3AED).withOpacity(0.5),
-              ),
+            child: Icon(
+              Icons.psychology,
+              size: 56,
+              color: const Color(0xFF7C3AED).withOpacity(0.5),
             ),
           ),
         ],
@@ -495,7 +499,325 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
-  Future<void> _pickQuizFile() async {
+  Widget _buildDailyTasks() {
+     final selectedDate = _weekDates[_selectedDayIndex];
+    final formattedDate = DateFormat('EEEE, MMMM d').format(selectedDate);
+    final dateKey = DateFormat('yyyy-MM-dd').format(selectedDate);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(formattedDate, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            _buildCalendarNavButtons(),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildDaysBar(),
+        const SizedBox(height: 24),
+        _buildFirestoreTasksList(dateKey),
+      ],
+    );
+  }
+
+  
+  Widget _buildFirestoreTasksList(String dateKey) {
+    final user = _auth.currentUser;
+    if (user == null) return const Center(child: Text("Please sign in."));
+
+    return StreamBuilder<QuerySnapshot>(
+      // Listening to the top-level collection for this specific user
+      stream: _firestore
+          .collection('revisionPlans')
+          .where('userId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return _buildNoTasksPlaceholder("No revision plans found.");
+        }
+
+        List<Widget> dailyTaskWidgets = [];
+
+        for (var doc in snapshot.data!.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final folderName = data['folderName'] ?? 'Unknown Course';
+          final dailyTasksString = data['dailyTasks'] as String? ?? '[]';
+          
+          try {
+            // Decode the JSON string into a List
+            final List<dynamic> daysList = jsonDecode(dailyTasksString);
+            
+            // Find the day matching our selected date
+            final dayData = daysList.firstWhere(
+              (day) => day['date'] == dateKey,
+              orElse: () => null,
+            );
+
+            if (dayData != null && dayData['tasks'] != null) {
+              final tasks = dayData['tasks'] as List<dynamic>;
+              for (var task in tasks) {
+                dailyTaskWidgets.add(
+                  _buildTaskCard(
+                    title: task['title'] ?? 'Revision Task',
+                    folder: folderName,
+                    isCompleted: task['completed'] ?? false,
+                    taskId: task['taskId'],
+                    docId: doc.id,
+                    fullDailyTasks: daysList,
+                    dateKey: dateKey,
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint("Error parsing dailyTasks: $e");
+          }
+        }
+
+        if (dailyTaskWidgets.isEmpty) {
+          return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = (constraints.maxWidth - 16) / 2;
+            return Wrap(
+              spacing: 16, runSpacing: 16,
+              children: dailyTaskWidgets.map((card) => SizedBox(width: cardWidth, child: card)).toList(),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTaskCard({
+    required String title,
+    required String folder,
+    required bool isCompleted,
+    required String taskId,
+    required String docId,
+    required List<dynamic> fullDailyTasks,
+    required String dateKey,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isCompleted ? Colors.transparent : const Color(0xFFE8E8E8)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          // Completion Toggle
+          InkWell(
+            onTap: () => _toggleTaskCompletion(docId, taskId, fullDailyTasks, dateKey),
+            child: Icon(
+              isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: isCompleted ? Colors.green : Colors.grey,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, 
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 4),
+                Text("$folder ",
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleTaskCompletion(String docId, String taskId, List<dynamic> fullDaysList, String dateKey) async {
+    // 1. Update the local data structure
+    for (var day in fullDaysList) {
+      if (day['date'] == dateKey) {
+        final tasks = day['tasks'] as List<dynamic>;
+        for (var t in tasks) {
+          if (t['taskId'] == taskId) {
+            t['completed'] = !(t['completed'] ?? false);
+          }
+        }
+      }
+    }
+
+    // 2. Re-encode and push to Firestore
+    try {
+      final updatedJson = jsonEncode(fullDaysList);
+      await _firestore.collection('revisionPlans').doc(docId).update({
+        'dailyTasks': updatedJson,
+      });
+    } catch (e) {
+      debugPrint("Update failed: $e");
+    }
+  }
+
+  // --- UI HELPERS ---
+
+  Widget _buildNoTasksPlaceholder(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[200]!)),
+      child: Column(
+        children: [
+          const Icon(Icons.assignment_turned_in_outlined, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(message, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildCalendarNavButtons() {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex > 0) ? _selectedDayIndex - 1 : _selectedDayIndex),
+          icon: const Icon(Icons.chevron_left),
+        ),
+        IconButton(
+          onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex < 6) ? _selectedDayIndex + 1 : _selectedDayIndex),
+          icon: const Icon(Icons.chevron_right),
+        ),
+      ],
+    );
+  }
+
+ Widget _buildDaysBar() {
+  // Increased spacing and height for a more "card-like" feel
+  const double horizontalGap = 12.0;
+  const double cardHeight = 80.0; 
+
+  return Row(
+    children: List.generate(_weekDates.length, (index) {
+      final date = _weekDates[index];
+      final isSelected = index == _selectedDayIndex;
+
+      return Expanded(
+        child: Padding(
+          // Applies spacing between cards except after the last one
+          padding: EdgeInsets.only(right: index < 6 ? horizontalGap : 0),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => setState(() => _selectedDayIndex = index),
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: cardHeight,
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFF9333EA) : Colors.grey[300]!,
+                        width: isSelected ? 2.0 : 1.0,
+                      ),
+                      boxShadow: isSelected 
+                        ? [BoxShadow(color: const Color(0xFF9333EA).withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4))]
+                        : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          DateFormat('EEEE').format(date).substring(0, 3), // e.g., "Mon"
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            color: isSelected ? const Color(0xFF7C3AED) : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          DateFormat('d').format(date), // Just the number
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            color: isSelected ? const Color(0xFF7C3AED) : Colors.grey[700],
+                          ),
+                        ),
+                        Text(
+                          DateFormat('MMM').format(date), // e.g., "Apr"
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isSelected ? const Color(0xFF9333EA).withOpacity(0.7) : Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }),
+  );
+}
+
+
+  Widget _buildRescheduledBanner() {
+    return Positioned(
+      top: 0,
+      right: 0,
+      child: Transform.rotate(
+        angle: 0.785398,
+        alignment: Alignment.topRight,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF38BDF8),
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: const Text(
+            'Rescheduled',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  
+ Future<void> _pickQuizFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
@@ -578,29 +900,43 @@ class _DashBoardState extends State<DashBoard> {
     }
   }
 
-  Widget _buildQuizContent() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
+ Widget _buildQuizContent() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          // This ensures the page is always scrollable for a better feel
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            // Forces the Column to be at least as tall as the screen
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20),
-                _buildQuizHeader(),
-                const SizedBox(height: 32),
-                _buildQuizUploadZone(),
-                if (_selectedQuizFileName != null) ...[
-                  const SizedBox(height: 24),
-                  _buildSelectedFileAndStartButton(),
-                ],
+                Container(
+                  height: 6,
+                  width: double.infinity,
+                  color: const Color(0xFFB3E5FC),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildQuizHeader(),
+                      const SizedBox(height: 32),
+                      _buildQuizUploadZone(),
+                      if (_selectedQuizFileName != null) ...[
+                        const SizedBox(height: 24),
+                        _buildSelectedFileAndStartButton(),
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -650,684 +986,116 @@ class _DashBoardState extends State<DashBoard> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+          // Increased vertical padding to make the zone look more "full"
+          padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
+            color: Colors.grey[50], // Added a slight background color
+            border: Border.all(color: Colors.grey.shade300, width: 2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey[600]),
-              const SizedBox(height: 16),
+              Icon(Icons.cloud_upload_outlined, size: 56, color: Colors.purple.shade300),
+              const SizedBox(height: 20),
               Text(
-                'select your file or drag and drop',
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'one pdf file accepted',
-                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-              ),
-              const SizedBox(height: 16),
-              Material(
-                color: const Color(0xFFE9D5FF),
-                borderRadius: BorderRadius.circular(8),
-                child: InkWell(
-                  onTap: _pickQuizFile,
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: Text('browse'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedFileAndStartButton() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _selectedQuizFileName!,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            IconButton(
-              onPressed: _pickQuizFile,
-              icon: Icon(Icons.edit_outlined, size: 20, color: Colors.grey[600]),
-              tooltip: 'Change file',
-            ),
-            IconButton(
-              onPressed: () => setState(() {
-                _selectedQuizFileName = null;
-                _selectedQuizFileBytes = null;
-              }),
-              icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey[600]),
-              tooltip: 'Remove file',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Material(
-          color: const Color(0xFFE9D5FF),
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            onTap: _isGeneratingQuiz ? null : _startQuizFromPdf,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: _isGeneratingQuiz
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.purple.shade800,
-                      ),
-                    )
-                  : Text(
-                      'Start Your Quiz',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.purple.shade800,
-                      ),
-                    ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDailyTasks() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Daily Tasks',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AvailabilityCalendarDialog(),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF9333EA),
-                side: const BorderSide(color: Color(0xFFE9D5FF), width: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                backgroundColor: const Color(0xFFFAF5FF),
-              ),
-              icon: const Icon(Icons.calendar_today, size: 18),
-              label: const Text(
-                'Configure Availability',
+                'Select your file or drag and drop',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 18, 
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[800]
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              _formatDate(_weekDays[_selectedDayIndex]['fullDate'] as DateTime),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
+              const SizedBox(height: 8),
+              Text(
+                'Only PDF files are accepted',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
-            ),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[700],
-                    side: BorderSide(color: Colors.grey[400]!),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
-                  label: Text(
-                    'Reschedule Overdue Tasks',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE9D5FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Browse Files',
+                  style: TextStyle(
+                    color: Colors.purple.shade900,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      if (_selectedDayIndex > 0) _selectedDayIndex--;
-                    });
-                  },
-                  icon: Icon(Icons.chevron_left, color: Colors.grey[700]),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      if (_selectedDayIndex < _weekDays.length - 1) {
-                        _selectedDayIndex++;
-                      }
-                    });
-                  },
-                  icon: Icon(Icons.chevron_right, color: Colors.grey[700]),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildDaysBar(),
-        const SizedBox(height: 24),
-        _buildTaskCards(),
-      ],
-    );
-  }
-
-  Widget _buildDaysBar() {
-    const spacing = 10.0;
-    const boxHeight = 64.0;
-    return Row(
-      children: List.generate(_weekDays.length, (index) {
-        final day = _weekDays[index];
-        final isSelected = index == _selectedDayIndex;
-        final hasRedDot = index == 6;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: index < _weekDays.length - 1 ? spacing : 0),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => setState(() => _selectedDayIndex = index),
-                borderRadius: BorderRadius.circular(10),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      height: boxHeight,
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.grey[300] : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(10),
-                        border: isSelected
-                            ? Border.all(color: Colors.black87, width: 1.5)
-                            : Border.all(color: Colors.grey[300]!),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            day['day'] as String,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                              color: Colors.black87,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            day['date'] as String,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (hasRedDot)
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
               ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildTaskCards() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _revisionPlansStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final plans = List<Map<String, dynamic>>.from(snapshot.data ?? []);
-        plans.sort((a, b) {
-          final da = _examDateFromPlan(a);
-          final db = _examDateFromPlan(b);
-          if (da == null && db == null) return 0;
-          if (da == null) return 1;
-          if (db == null) return -1;
-          return da.compareTo(db);
-        });
-
-        if (plans.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F8F8),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEAEAEA)),
-            ),
-            child: Text(
-              'No revision plans yet. Generate one from Revision Plan — tasks appear here after the plan is saved to your account.',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-          );
-        }
-
-        final selectedDate =
-            _weekDays[_selectedDayIndex]['fullDate'] as DateTime;
-
-        final studyRows = <Widget>[];
-        var anyPlanHasDailyTasks = false;
-
-        for (final plan in plans) {
-          final daily = _parseDailyTasksFromPlan(plan);
-          if (daily.isNotEmpty) anyPlanHasDailyTasks = true;
-          final dayEntry = _findDayEntryForTasks(daily, selectedDate);
-          final tasks = dayEntry?['tasks'] as List<dynamic>? ?? [];
-          final planId = plan['id'] as String?;
-          final folder = _folderNameFromPlan(plan);
-
-          for (final t in tasks) {
-            if (t is! Map) continue;
-            final m = Map<dynamic, dynamic>.from(t);
-            final title = (m['title'] ?? 'Task').toString();
-            final course = (m['course'] ?? folder).toString();
-            final done = m['completed'] == true;
-            studyRows.add(
-              _buildStudyTaskRow(
-                title: title,
-                course: course,
-                planLabel: folder,
-                isCompleted: done,
-                planId: planId,
-              ),
-            );
-          }
-        }
-
-        if (studyRows.isNotEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: studyRows,
-          );
-        }
-
-        if (anyPlanHasDailyTasks) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F8F8),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEAEAEA)),
-            ),
-            child: Text(
-              'No tasks scheduled for ${_formatDate(selectedDate)}. '
-              'Choose another day in the week above, or open Revision Plan for the full calendar.',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-          );
-        }
-
-        final allCards = plans.map((plan) {
-          final status = (plan['status'] as String? ?? 'pending').toLowerCase();
-          final folder = _folderNameFromPlan(plan);
-          final exam = _examDateFromPlan(plan);
-          final subtitle = exam != null
-              ? 'Exam: ${_formatDate(exam)}'
-              : 'Revision plan';
-          return _buildTaskCard(
-            title: folder,
-            course: subtitle,
-            isCompleted: status == 'completed',
-            isRescheduled: status == 'error',
-          );
-        }).toList();
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF9E6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFFE0B2)),
-              ),
-              child: Text(
-                'Your plan is saved, but daily tasks are not in this document yet. '
-                'Ask n8n to write a `dailyTasks` array (see Revision Plan page). '
-                'Below is a summary only.',
-                style: TextStyle(fontSize: 13, color: Colors.grey[800]),
-              ),
-            ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const spacing = 16.0;
-                const runSpacing = 16.0;
-                final cardWidth = (constraints.maxWidth - spacing) / 2;
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: runSpacing,
-                  alignment: WrapAlignment.start,
-                  children: allCards
-                      .map((card) => SizedBox(width: cardWidth, child: card))
-                      .toList(),
-                );
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildStudyTaskRow({
-    required String title,
-    required String course,
-    required String planLabel,
-    required bool isCompleted,
-    required String? planId,
-  }) {
-    const greenCheck = Color(0xFF52C41A);
-    const greenBg = Color(0xFFE6F7E9);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: planId == null
-              ? null
-              : () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => RevisionPlanCalendarPage(planId: planId),
-                    ),
-                  );
-                },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: isCompleted ? greenBg : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isCompleted
-                    ? Colors.transparent
-                    : const Color(0xFFE8E8E8),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  margin: const EdgeInsets.only(top: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: isCompleted ? greenCheck : Colors.black87,
-                      width: isCompleted ? 2 : 1,
-                    ),
-                  ),
-                  child: isCompleted
-                      ? const Icon(Icons.check, size: 16, color: greenCheck)
-                      : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        course,
-                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        planLabel,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.deepPurple.shade300,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: Colors.grey[400],
-                ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildTaskCard({
-    required String title,
-    required String course,
-    required bool isCompleted,
-    required bool isRescheduled,
-  }) {
-    const greenCheck = Color(0xFF52C41A);
-    const greenBg = Color(0xFFE6F7E9);
-    const greyButtonBg = Color(0xFFF5F5F5);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Container(
-        padding: EdgeInsets.fromLTRB(16, 14, isRescheduled ? 120 : 16, 14),
-        decoration: BoxDecoration(
-          color: isCompleted ? greenBg : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isCompleted
-                ? Colors.transparent
-                : const Color(0xFFE8E8E8),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
+  Widget _buildSelectedFileAndStartButton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Row(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: isCompleted ? greenCheck : Colors.black87,
-                        width: isCompleted ? 2 : 1,
-                      ),
-                    ),
-                    child: isCompleted
-                        ? const Center(
-                            child: Icon(Icons.check, size: 16, color: greenCheck),
-                          )
-                        : null,
+              const Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _selectedQuizFileName!,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          course,
-                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Material(
-                    color: isCompleted ? greenCheck : greyButtonBg,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      onTap: () {},
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        child: Text(
-                          'Take Quiz',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isCompleted ? Colors.white : Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              if (isRescheduled) _buildRescheduledBanner(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRescheduledBanner() {
-    return Positioned(
-      top: 0,
-      right: 0,
-      child: Transform.rotate(
-        angle: 0.785398,
-        alignment: Alignment.topRight,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF38BDF8),
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+              IconButton(
+                onPressed: _pickQuizFile,
+                icon: const Icon(Icons.refresh, size: 20),
+                tooltip: 'Change file',
+              ),
+              IconButton(
+                onPressed: () => setState(() {
+                  _selectedQuizFileName = null;
+                  _selectedQuizFileBytes = null;
+                }),
+                icon: const Icon(Icons.close, size: 20),
+                tooltip: 'Remove',
               ),
             ],
           ),
-          child: const Text(
-            'Rescheduled',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isGeneratingQuiz ? null : _startQuizFromPdf,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9333EA),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: _isGeneratingQuiz
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Text(
+                      'Generate Quiz Now',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

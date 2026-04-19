@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:intl/intl.dart'; 
 import 'widgets/custom_sidebar.dart';
 import 'pages/quiz_page.dart';
@@ -14,7 +14,8 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
-import 'RevPlanPage.dart';
+import 'pages/RevisionPlanCalendarPage.dart';
+
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -34,7 +35,6 @@ class _DashBoardState extends State<DashBoard> {
   String? _selectedQuizFileName;
   Uint8List? _selectedQuizFileBytes;
   bool _isGeneratingQuiz = false;
-  DateTime _todayDate = DateTime.now();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -73,6 +73,127 @@ class _DashBoardState extends State<DashBoard> {
     }
   }
 
+  List<Map<String, dynamic>> get _weekDays {
+    final now = DateTime.now();
+    final selected = DateTime(now.year, now.month, now.day)
+        .add(Duration(days: _selectedDayIndex - 3));
+    final monday = selected.subtract(Duration(days: selected.weekday - 1));
+    return List.generate(7, (index) {
+      final date = monday.add(Duration(days: index));
+      return {
+        'day': _weekdayShort(date.weekday),
+        'date': '${_monthShort(date.month)} ${date.day}',
+        'fullDate': DateTime(date.year, date.month, date.day),
+      };
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> _revisionPlansStream() {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(const []);
+    return _firestore
+        .collection('revisionPlans')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+              .toList(),
+        );
+  }
+
+  DateTime? _tryParseDate(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  /// n8n / Firestore may use different keys than the app webhook payload.
+  DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
+    return _tryParseDate(plan['examDate']) ??
+        _tryParseDate(plan['exam_date']) ??
+        _tryParseDate(plan['examDateIso']);
+  }
+
+  String _folderNameFromPlan(Map<String, dynamic> plan) {
+    return plan['folderName'] as String? ??
+        plan['folder_name'] as String? ??
+        'Course';
+  }
+
+  /// Same shape as [RevisionPlanCalendarPage]: JSON array or list of day maps with `date` + `tasks`.
+  List<dynamic> _parseDailyTasksFromPlan(Map<String, dynamic> plan) {
+    final raw = plan['dailyTasks'];
+    if (raw == null) return [];
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List<dynamic>) return decoded;
+      } catch (_) {}
+      return [];
+    }
+    if (raw is List) return raw;
+    return [];
+  }
+
+  bool _isSameCalendarDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime? _parseTaskScheduleDay(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is String) {
+      final p = DateTime.tryParse(raw);
+      if (p != null) return p;
+    }
+    return null;
+  }
+
+  Map<dynamic, dynamic>? _findDayEntryForTasks(
+    List<dynamic> dailyTasks,
+    DateTime date,
+  ) {
+    final n = DateTime(date.year, date.month, date.day);
+    for (final day in dailyTasks) {
+      if (day is! Map) continue;
+      final map = Map<dynamic, dynamic>.from(day);
+      final dayDate = _parseTaskScheduleDay(map['date']);
+      if (dayDate != null && _isSameCalendarDay(dayDate, n)) {
+        return map;
+      }
+    }
+    return null;
+  }
+
+  String _weekdayShort(int weekday) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return names[(weekday - 1).clamp(0, 6)];
+  }
+
+  String _monthShort(int month) {
+    const names = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return names[(month - 1).clamp(0, 11)];
+  }
+
+  String _formatDate(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    return '${_weekdayShort(d.weekday)}, ${_monthShort(d.month)} ${d.day}';
+  }
+
   Widget _getPageForIndex(int index) {
     switch (index) {
       case 0:
@@ -104,16 +225,12 @@ class _DashBoardState extends State<DashBoard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 6,
-            width: double.infinity,
-            color: const Color(0xFFB3E5FC),
-          ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const SizedBox(height: 20),
                 _buildHeader(),
                 const SizedBox(height: 24),
                 _buildGreeting(),
@@ -180,13 +297,6 @@ class _DashBoardState extends State<DashBoard> {
   }
 
 Widget _buildUpcomingExamsAndQuote() {
-    final userId = _auth.currentUser?.uid;
-    if (userId == null) return const SizedBox.shrink();
-
-    // Fix: We define 'now' locally so it never errors on 'year'
-    final now = DateTime.now();
-    final queryDate = DateTime(now.year, now.month, now.day);
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -211,76 +321,65 @@ Widget _buildUpcomingExamsAndQuote() {
                 ],
               ),
               const SizedBox(height: 12),
-              
-              StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('revisionPlans')
-                    .where('userId', isEqualTo: userId)
-                    .snapshots(),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _revisionPlansStream(),
                 builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return _buildExamPlaceholder(child: const Text("Error loading exams"));
-                  }
-
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return _buildExamPlaceholder(child: const CircularProgressIndicator(strokeWidth: 2));
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
                   }
 
-                  // Safe check for data
-                  if (!snapshot.hasData || snapshot.data == null || snapshot.data!.docs.isEmpty) {
-                    return _buildExamPlaceholder(child: const Text(
-                      'No upcoming exams scheduled',
-                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                    ));
+                  final today = DateTime.now();
+                  final startToday = DateTime(today.year, today.month, today.day);
+                  final plans = (snapshot.data ?? [])
+                      .where((p) => _examDateFromPlan(p) != null)
+                      .toList()
+                    ..sort((a, b) => _examDateFromPlan(a)!
+                        .compareTo(_examDateFromPlan(b)!));
+
+                  final upcoming = plans
+                      .where((p) => !_examDateFromPlan(p)!.isBefore(startToday))
+                      .take(2)
+                      .toList();
+
+                  if (upcoming.isEmpty) {
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 18,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'No upcoming exams yet. Create a revision plan to get started.',
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                      ),
+                    );
                   }
-
-                  // 1. Filter locally for future exams
-                  final validDocs = snapshot.data!.docs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    if (!data.containsKey('examDate') || data['examDate'] == null) return false;
-                    
-                    final Timestamp examTs = data['examDate'];
-                    final examDate = examTs.toDate();
-                    
-                    // Keep if the exam is today or in the future
-                    return examDate.isAfter(queryDate.subtract(const Duration(seconds: 1)));
-                  }).toList();
-
-                  if (validDocs.isEmpty) {
-                    return _buildExamPlaceholder(child: const Text(
-                      'No upcoming exams scheduled',
-                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                    ));
-                  }
-
-                  // 2. Sort locally (Nearest first)
-                  validDocs.sort((a, b) {
-                    Timestamp t1 = a['examDate'];
-                    Timestamp t2 = b['examDate'];
-                    return t1.compareTo(t2);
-                  });
-
-                  // 3. Take top 2
-                  final displayDocs = validDocs.take(2).toList();
 
                   return Column(
-                    children: displayDocs.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final String folder = data['folderName'] ?? 'Course';
-                      final Timestamp timestamp = data['examDate'];
-                      final String formattedDate = DateFormat('dd/MM/yyyy').format(timestamp.toDate());
-
+                    children: List.generate(upcoming.length, (index) {
+                      final plan = upcoming[index];
+                      final examDate = _examDateFromPlan(plan)!;
+                      final title =
+                          '${_folderNameFromPlan(plan).toUpperCase()} EXAM';
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
                         child: _buildExamCard(
-                          title: '$folder EXAM',
-                          date: formattedDate,
-                          color: displayDocs.indexOf(doc) % 2 == 0 
-                              ? const Color(0xFFFFF3CD) 
+                          title: title,
+                          date:
+                              '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                          color: index.isEven
+                              ? const Color(0xFFFFF3CD)
                               : const Color(0xFFFFE4CC),
                         ),
                       );
-                    }).toList(),
+                    }),
                   );
                 },
               ),
@@ -610,13 +709,11 @@ Widget _buildExamCard({required String title, required String date, required Col
   // Increased spacing and height for a more "card-like" feel
   const double horizontalGap = 12.0;
   const double cardHeight = 80.0; 
-  final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
   return Row(
     children: List.generate(_weekDates.length, (index) {
       final date = _weekDates[index];
       final isSelected = index == _selectedDayIndex;
-      final isToday = DateFormat('yyyy-MM-dd').format(date) == todayStr;
 
       return Expanded(
         child: Padding(
@@ -1005,42 +1102,32 @@ Widget _buildExamCard({required String title, required String date, required Col
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Scaffold(
-      body: Row(
-        children: [
-          CustomSidebar(
-            selectedIndex: _selectedIndex,
-            onItemSelected: (index) {
-              const navNames = [
-                'Dashboard',
-                'Revision Plan',
-                'Snaps Board',
-                'Course Folder',
-                'Brain Games',
-                'Quiz',
-                'Profile',
-              ];
-              if (index >= 0 && index < navNames.length) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(navNames[index]),
-                    duration: const Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-          ),
-          Expanded(
-            child: Container(
-              color: Colors.white,
-              child: _getPageForIndex(_selectedIndex),
+      body: MediaQuery(
+        data: media.copyWith(
+          padding: EdgeInsets.zero,
+          viewPadding: EdgeInsets.zero,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CustomSidebar(
+              selectedIndex: _selectedIndex,
+              onItemSelected: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
             ),
-          ),
-        ],
+            Expanded(
+              child: Container(
+                color: Colors.white,
+                child: _getPageForIndex(_selectedIndex),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

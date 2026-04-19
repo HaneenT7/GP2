@@ -20,7 +20,7 @@ class FolderService {
 
     return _foldersCollection
         .where('userId', isEqualTo: currentUserId)
-        .orderBy('createdAt', descending: true)
+.orderBy('lastActivityAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => CourseFolder.fromFirestore(doc.id, doc.data() as Map<String, dynamic>))
@@ -52,8 +52,16 @@ class FolderService {
     );
 
     final docRef = await _foldersCollection.add(folder.toFirestore());
+    await docRef.update({'lastActivityAt': DateTime.now().toIso8601String()});
+
     return docRef.id;
   }
+
+Future<void> touchFolder(String folderId) async {
+  await _foldersCollection.doc(folderId).update({
+    'lastActivityAt': DateTime.now().toIso8601String(),
+  });
+}
 
   // Update folder name
   Future<void> updateFolder(String folderId, String newName) async {

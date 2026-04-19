@@ -84,7 +84,7 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
                         crossAxisCount: 4,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 8,
-                        childAspectRatio: 0.80,
+                        childAspectRatio:1.3,
                       ),
                       itemCount: folders.length,
                       itemBuilder: (context, index) {

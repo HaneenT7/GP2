@@ -985,6 +985,8 @@ Future<void> _toggleTaskCompletion(int taskIndex, bool completed) async {
         .collection('revisionPlans')
         .doc(widget.planId)
         .update({'dailyTasks': dataToSave});
+        await _checkAndMarkPlanCompleted(dailyTasks, planData);
+
   } catch (e) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -995,6 +997,61 @@ Future<void> _toggleTaskCompletion(int taskIndex, bool completed) async {
         backgroundColor: Colors.red.shade700,
       ),
     );
+  }
+}
+
+
+Future<void> _checkAndMarkPlanCompleted(
+  List<dynamic> dailyTasks,
+  Map<String, dynamic> planData,
+) async {
+  int totalTasks = 0;
+  int completedTasks = 0;
+
+  for (var day in dailyTasks) {
+    final tasks = day['tasks'] as List<dynamic>? ?? [];
+    totalTasks += tasks.length;
+    completedTasks += tasks.where((t) => t['completed'] == true).length;
+  }
+
+  if (totalTasks == 0) return;
+
+  final bool isNowComplete = completedTasks == totalTasks;
+  final bool wasAlreadyMarked = planData['isCompleted'] == true;
+
+  if (isNowComplete && !wasAlreadyMarked) {
+    final userId = planData['userId'] as String?;
+
+    await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .update({'isCompleted': true});
+
+    if (userId != null) {
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(userId)
+          .update({'completedPlans': FieldValue.increment(1)});
+    }
+
+    if (!mounted) return;
+  
+  }
+
+  if (!isNowComplete && wasAlreadyMarked) {
+    final userId = planData['userId'] as String?;
+
+    await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .update({'isCompleted': false});
+
+    if (userId != null) {
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(userId)
+          .update({'completedPlans': FieldValue.increment(-1)});
+    }
   }
 }
 

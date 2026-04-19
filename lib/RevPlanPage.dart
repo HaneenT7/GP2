@@ -126,50 +126,44 @@ class _RevPlanPageState extends State<StatefulWidget> {
                                 child: Text('Error: ${snapshot.error}'),
                               );
                             }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                            final now = DateTime.now();
+final allPlans = snapshot.data!.docs;
 
-                            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                              return Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today_outlined,
-                                      size: 64,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'No revision plans yet',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Create your first plan to get started!',
-                                      style: TextStyle(color: Colors.grey.shade500),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
+final activePlans = allPlans.where((doc) {
+  final data = doc.data() as Map<String, dynamic>;
+  final raw = data['examDate'];
+  final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
+  return date.isAfter(now);
+}).toList();
 
-                            final plans = snapshot.data!.docs;
+final passedPlans = allPlans.where((doc) {
+  final data = doc.data() as Map<String, dynamic>;
+  final raw = data['examDate'];
+  final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
+  return date.isBefore(now);
+}).toList();
 
-                            return ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: plans.length,
-                              itemBuilder: (context, index) {
-                                final planDoc = plans[index];
-                                final planData = planDoc.data() as Map<String, dynamic>;
-                                
-                                return RevisionPlanCard(
-                                  planId: planDoc.id,
-                                  planData: planData,
-                                );
-                              },
-                            );
+if (activePlans.isEmpty && passedPlans.isEmpty) {
+  return Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.calendar_today_outlined, size: 64, color: Colors.grey.shade400),
+        const SizedBox(height: 16),
+        Text('No revision plans yet', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+        const SizedBox(height: 8),
+        Text('Create your first plan to get started!', style: TextStyle(color: Colors.grey.shade500)),
+      ],
+    ),
+  );
+}
+
+return _PlansList(
+  activePlans: activePlans,
+  passedPlans: passedPlans,
+);
+                            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
                           },
                         ),
                 ),
@@ -305,9 +299,7 @@ var rawTasks = planData['dailyTasks'];
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: daysLeft <= 7 
-                                ? Colors.red.shade50 
-                                : Colors.blue.shade50,
+                            color:  Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -315,9 +307,7 @@ var rawTasks = planData['dailyTasks'];
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: daysLeft <= 7 
-                                  ? Colors.red 
-                                  : Colors.blue,
+                              color:Colors.blue,
                             ),
                           ),
                         ),
@@ -333,13 +323,7 @@ var rawTasks = planData['dailyTasks'];
                             child: LinearProgressIndicator(
                               value: progressPercentage / 100,
                               backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                progressPercentage < 30
-                                    ? Colors.red
-                                    : progressPercentage < 70
-                                        ? Colors.orange
-                                        : Colors.green,
-                              ),
+                              color: const Color.fromARGB(255, 208, 173, 218),
                               minHeight: 8,
                             ),
                           ),
@@ -350,11 +334,7 @@ var rawTasks = planData['dailyTasks'];
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: progressPercentage < 30
-                                ? Colors.red
-                                : progressPercentage < 70
-                                    ? Colors.orange
-                                    : Colors.green,
+                            color: const Color.fromARGB(255, 193, 132, 208),
                           ),
                         ),
                       ],
@@ -375,6 +355,80 @@ var rawTasks = planData['dailyTasks'];
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PlansList extends StatefulWidget {
+  final List<QueryDocumentSnapshot> activePlans;
+  final List<QueryDocumentSnapshot> passedPlans;
+
+  const _PlansList({required this.activePlans, required this.passedPlans});
+
+  @override
+  State<_PlansList> createState() => _PlansListState();
+}
+
+class _PlansListState extends State<_PlansList> {
+  bool _passedExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: [
+        // Active plans
+        ...widget.activePlans.map((doc) => RevisionPlanCard(
+              planId: doc.id,
+              planData: doc.data() as Map<String, dynamic>,
+            )),
+
+        // Passed plans collapsible header
+        if (widget.passedPlans.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => setState(() => _passedExpanded = !_passedExpanded),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.history, size: 18, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Passed plans (${widget.passedPlans.length})',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _passedExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.grey[600],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Passed plans list
+          if (_passedExpanded)
+            ...widget.passedPlans.map((doc) => Opacity(
+                  opacity: 0.6,
+                  child: RevisionPlanCard(
+                    planId: doc.id,
+                    planData: doc.data() as Map<String, dynamic>,
+                  ),
+                )),
+        ],
+      ],
     );
   }
 }

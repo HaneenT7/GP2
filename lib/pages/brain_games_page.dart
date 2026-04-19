@@ -149,7 +149,7 @@ class BrainGamesPage extends StatelessWidget {
         cardColor: const Color(0xFFF3E5F5),
         borderColor: const Color(0xFFCE93D8),
         child: _buildPreviewImageOrWidget(
-          'assets/images/anagrams_preview.png',
+          'assets/images/memory_preview.png',
           _buildMemoryPreview(),
         ),
         onPressed: () => Navigator.push(

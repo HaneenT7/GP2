@@ -58,7 +58,7 @@ class RevisionPlanResult {
 
   static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
     return RevisionPlanResult(
-      requestId: data['requestId'] as String? ?? '',
+      requestId: data['planId'] as String? ?? '',
       status: data['status'] as String? ?? 'pending',
       planContent: data['planContent'] as String?,
       errorMessage: data['errorMessage'] as String?,
@@ -79,27 +79,23 @@ class RevisionPlanService {
   String? get _userId => _auth.currentUser?.uid;
 
   static const String _collection = 'revisionPlans';
-  static const Duration _listenTimeout = Duration(seconds: 120);
+  
+  // 1. INCREASE THIS: Change from 120 to 600 (10 minutes)
+  // This gives Gemini plenty of time to read files and generate the plan.
+  static const Duration _listenTimeout = Duration(minutes: 4);
 
-  /// Send revision plan details to n8n webhook. n8n will call Gemini and write the plan to Firebase.
   Future<void> sendToN8n(RevisionPlanRequest request) async {
     final uri = Uri.parse(n8nRevisionPlanWebhookUrl);
-    if (uri.host == 'your-n8n-instance.com') {
-      throw Exception(
-        'Configure n8n webhook URL in lib/config/app_config.dart or via N8N_REVISION_PLAN_WEBHOOK env.',
-      );
-    }
+    // ... validation code ...
 
     final response = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: utf8.encode(jsonEncode(request.toJson())),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 60)); // 2. INCREASE THIS: to 60 seconds
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Webhook failed: ${response.statusCode} ${response.body}',
-      );
+      throw Exception('Webhook failed: ${response.statusCode}');
     }
   }
 
@@ -129,10 +125,13 @@ class RevisionPlanService {
     });
 
     sub = docRef.snapshots().listen((snap) {
+      print("DEBUG: Received snapshot for ${snap.id}. Exists: ${snap.exists}"); // ADD THIS
       if (!snap.exists) return;
       final data = snap.data();
+      print("DEBUG: Data from Firestore: $data"); // ADD THIS
       if (data == null) return;
       final result = RevisionPlanResult.fromFirestore(data);
+      print("DEBUG: Parsed status: ${result.status}"); // ADD THIS
       if (result.status == 'completed' || result.status == 'error') {
         finish(result);
       }

@@ -3,6 +3,7 @@ import '../models/course_folder.dart';
 import '../services/folder_service.dart';
 import '../widgets/create_folder_dialog.dart';
 import 'folder_detail_page.dart';
+import 'package:gp2_watad/widgets/app_header.dart';
 
 class CourseFoldersPage extends StatefulWidget {
   const CourseFoldersPage({super.key});
@@ -30,76 +31,126 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Header
-          _buildHeader(),
-          // Folders Grid
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                // Tap outside folders - exit manage mode and clear quick action
-                if (_isManageMode || _selectedFolderForQuickAction != null) {
+  return Scaffold(
+    backgroundColor: Colors.white,
+    body: Column(
+      children: [
+        // 1. THE UNIFIED GLOBAL HEADER
+        const AppHeader(title: 'My Course folders'),
+
+        // 2. ACTION BUTTONS ROW (Manage & New)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
                   setState(() {
-                    _isManageMode = false;
+                    _isManageMode = !_isManageMode;
                     _selectedFolderForQuickAction = null;
                   });
+                },
+                icon: Icon(
+                  _isManageMode ? Icons.close : Icons.settings,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                label: Text(
+                  _isManageMode ? 'Done' : 'Manage',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isManageMode ? Colors.grey : const Color(0xFF6B46C1),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: () => _showCreateFolderDialog(),
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text(
+                  'New',
+                  style: TextStyle(color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B46C1),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 3. FOLDERS GRID
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              if (_isManageMode || _selectedFolderForQuickAction != null) {
+                setState(() {
+                  _isManageMode = false;
+                  _selectedFolderForQuickAction = null;
+                });
+              }
+            },
+            child: StreamBuilder<List<CourseFolder>>(
+              stream: _folderService.getFolders(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
-              },
-              child: StreamBuilder<List<CourseFolder>>(
-                stream: _folderService.getFolders(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
 
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text('Error: ${snapshot.error}'),
-                    );
-                  }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Error: ${snapshot.error}'),
+                  );
+                }
 
-                  final folders = snapshot.data ?? [];
+                final folders = snapshot.data ?? [];
 
-                  if (folders.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No course folders yet.\nClick "+ New" to create one.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
+                if (folders.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No course folders yet.\nClick "+ New" to create one.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
                       ),
-                    );
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: GridView.builder(
-                      shrinkWrap: false,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 8,
-                        childAspectRatio:1.3,
-                      ),
-                      itemCount: folders.length,
-                      itemBuilder: (context, index) {
-                        return _buildFolderCard(folders[index]);
-                      },
                     ),
                   );
-                },
-              ),
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: GridView.builder(
+                    shrinkWrap: false,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 1.3,
+                    ),
+                    itemCount: folders.length,
+                    itemBuilder: (context, index) {
+                      return _buildFolderCard(folders[index]);
+                    },
+                  ),
+                );
+              },
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildHeader() {
     return Container(

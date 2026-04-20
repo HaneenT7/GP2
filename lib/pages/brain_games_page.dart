@@ -4,6 +4,7 @@ import 'sudoku_game_page.dart';
 import 'word_search_game_page.dart';
 import 'math_lab_game_page.dart';
 import 'memory_game_page.dart';
+import 'package:gp2_watad/widgets/app_header.dart';
 
 class BrainGamesPage extends StatelessWidget {
   const BrainGamesPage({super.key});
@@ -17,14 +18,15 @@ class BrainGamesPage extends StatelessWidget {
         color: Color(0xFF1C1C1E),
       );
 
-  @override
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          _buildTopBar(),
-          Divider(height: 1, color: Colors.grey.shade300),
+          // 1. REPLACED _buildTopBar() with the Global Header
+          const AppHeader(title: 'Brain Games'),
+
           Expanded(
             child: Stack(
               children: [
@@ -33,8 +35,7 @@ class BrainGamesPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Brain Games', style: _titleStyle),
-                      const SizedBox(height: 24),
+                      // 2. REMOVED the local Text('Brain Games') since it's now in the header
                       _buildGameCards(context),
                       const SizedBox(height: 200),
                     ],
@@ -53,7 +54,7 @@ class BrainGamesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar() {//
     return SizedBox(
       height: _navBarHeight,
       child: Padding(
@@ -62,7 +63,7 @@ class BrainGamesPage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '318941',
+              'brain games',
               style: TextStyle(
                 fontSize: 16,
                 color: _mutedIconColor,

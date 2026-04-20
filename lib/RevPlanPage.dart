@@ -6,6 +6,8 @@ import 'pages/RevisionPlanCalendarPage.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'pages/availability_calendar_dialog.dart';
+import 'DashBoard.dart';
+import 'package:gp2_watad/widgets/app_header.dart';
 
 class RevPlanPage extends StatefulWidget {
   const RevPlanPage({super.key});
@@ -33,58 +35,29 @@ class _RevPlanPageState extends State<StatefulWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+  final userId = FirebaseAuth.instance.currentUser?.uid;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: _isSetupMode
-          ? SetUpRevPlan(
-              onClose: () {
-                setState(() => _isSetupMode = false);
-              },
-            )
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 10.0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Revision plans',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.notifications_none_outlined),
-                        onPressed: () {
-                          //TODO: alarm feature
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(
-                  height: 1,
-                  thickness: 0.5,
-                  color: Color.fromARGB(255, 33, 33, 33),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildConfigureButton(),
-
-                      const SizedBox(width: 8),
-
-                     ElevatedButton.icon(
+  return Scaffold(
+    backgroundColor: Colors.white,
+    body: _isSetupMode
+        ? SetUpRevPlan(
+            onClose: () {
+              setState(() => _isSetupMode = false);
+            },
+          )
+        : Column(
+            children: [
+              // --- NEW HEADER REPLACEMENT ---
+              const AppHeader(title: 'Revision plans'), 
+              
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildConfigureButton(),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
                       onPressed: () {
                         setState(() {
                           _isSetupMode = true;
@@ -102,76 +75,74 @@ class _RevPlanPageState extends State<StatefulWidget> {
                         ),
                       ),
                     ),
-                    ],
-                  ),
+                  ],
                 ),
-                
-                // Revision Plans List
-                Expanded(
-                  child: userId == null
-                      ? const Center(child: Text('Please sign in'))
-                      : StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('revisionPlans')
-                              .where('userId', isEqualTo: userId)
-                              .orderBy('createdAt', descending: true)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
+              ),
+              
+              // Revision Plans List
+              Expanded(
+                child: userId == null
+                    ? const Center(child: Text('Please sign in'))
+                    : StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('revisionPlans')
+                            .where('userId', isEqualTo: userId)
+                            .orderBy('createdAt', descending: true)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
 
-                            if (snapshot.hasError) {
-                              return Center(
-                                child: Text('Error: ${snapshot.error}'),
-                              );
-                            }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            final now = DateTime.now();
-final allPlans = snapshot.data!.docs;
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Error: ${snapshot.error}'),
+                            );
+                          }
 
-final activePlans = allPlans.where((doc) {
-  final data = doc.data() as Map<String, dynamic>;
-  final raw = data['examDate'];
-  final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
-  return date.isAfter(now);
-}).toList();
+                          final now = DateTime.now();
+                          final allPlans = snapshot.data!.docs;
 
-final passedPlans = allPlans.where((doc) {
-  final data = doc.data() as Map<String, dynamic>;
-  final raw = data['examDate'];
-  final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
-  return date.isBefore(now);
-}).toList();
+                          final activePlans = allPlans.where((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final raw = data['examDate'];
+                            final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
+                            return date.isAfter(now);
+                          }).toList();
 
-if (activePlans.isEmpty && passedPlans.isEmpty) {
-  return Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.calendar_today_outlined, size: 64, color: Colors.grey.shade400),
-        const SizedBox(height: 16),
-        Text('No revision plans yet', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
-        const SizedBox(height: 8),
-        Text('Create your first plan to get started!', style: TextStyle(color: Colors.grey.shade500)),
-      ],
-    ),
+                          final passedPlans = allPlans.where((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final raw = data['examDate'];
+                            final date = raw is Timestamp ? raw.toDate() : DateTime.parse(raw);
+                            return date.isBefore(now);
+                          }).toList();
+
+                          if (activePlans.isEmpty && passedPlans.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.calendar_today_outlined, size: 64, color: Colors.grey.shade400),
+                                  const SizedBox(height: 16),
+                                  Text('No revision plans yet', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+                                  const SizedBox(height: 8),
+                                  Text('Create your first plan to get started!', style: TextStyle(color: Colors.grey.shade500)),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return _PlansList(
+                            activePlans: activePlans,
+                            passedPlans: passedPlans,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
   );
-}
-
-return _PlansList(
-  activePlans: activePlans,
-  passedPlans: passedPlans,
-);
-                            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                          },
-                        ),
-                ),
-              ],
-            ),
-    );
-  }
-}
+}}
 
 // Revision Plan Card Widget
 class RevisionPlanCard extends StatelessWidget {

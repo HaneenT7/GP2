@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'board_detail_page.dart';
+import 'package:gp2_watad/DashBoard.dart';
+import 'package:gp2_watad/widgets/app_header.dart';
+
 
 class SnapsBoardPage extends StatefulWidget {
   const SnapsBoardPage({super.key});
@@ -225,32 +228,61 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    // ── CHANGED: navigate using boardId so detail page uses correct Firestore doc ──
-    if (_selectedBoardName != null && _selectedBoardId != null) {
-      return BoardDetailPage(
-        boardName: _selectedBoardName!,
-        boardId: _selectedBoardId!, // ── CHANGED: pass boardId ──
-        onBack: () => setState(() {
-          _selectedBoardName = null;
-          _selectedBoardId = null;
-        }),
-      );
-    }
+Widget build(BuildContext context) {
+  if (_selectedBoardName != null && _selectedBoardId != null) {
+    return BoardDetailPage(
+      boardName: _selectedBoardName!,
+      boardId: _selectedBoardId!,
+      onBack: () => setState(() {
+        _selectedBoardName = null;
+        _selectedBoardId = null;
+      }),
+    );
+  }
 
-    return Container(
-      color: const Color(0xFFF5F5F5),
-      padding: const EdgeInsets.fromLTRB(32, 16, 32, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 28),
-          // ── CHANGED: show loading spinner while fetching ──
-          _isLoading
-              ? const Expanded(
-                  child: Center(child: CircularProgressIndicator()))
-              : Expanded(
+  const purpleDark = Color(0xFF4C1D95);
+
+  return Container(
+    color: Colors.white,
+    padding: const EdgeInsets.only(top: 0, bottom: 24), // top 0 so header hits the top
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. THE NEW GLOBAL HEADER
+        const AppHeader(title: 'My Snaps Board'),
+
+        // 2. ACTION BUTTON ROW (Under the Header)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end, // Aligns button to the right
+            children: [
+              ElevatedButton.icon(
+                onPressed: _openCreateBoardModal,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: purpleDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text('Create New Board'),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // 3. THE BOARDS GRID
+        _isLoading
+            ? const Expanded(
+                child: Center(child: CircularProgressIndicator()))
+            : Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       return _buildBoardsGrid(
@@ -258,66 +290,12 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
                     },
                   ),
                 ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    const purpleDark = Color(0xFF4C1D95);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text(
-          'My Snaps Board',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ElevatedButton.icon(
-              onPressed: _openCreateBoardModal,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: purpleDark,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
               ),
-              icon: const Icon(Icons.add, size: 20),
-              label: const Text('Create New Board'),
-            ),
-            const SizedBox(width: 16),
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(Icons.notifications_outlined,
-                    size: 28, color: Colors.grey[700]),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ],
-    );
-  }
+    ),
+  );
+}
+
 
   Widget _buildBoardsGrid(double availableWidth, double availableHeight) {
     const horizontalSpacing = 20.0;

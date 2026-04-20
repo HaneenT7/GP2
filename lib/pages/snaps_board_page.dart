@@ -249,7 +249,7 @@ Widget build(BuildContext context) {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 1. THE NEW GLOBAL HEADER
-        const AppHeader(title: 'My Snaps Board'),
+        const AppHeader(title: 'Snaps Board'),
 
         // 2. ACTION BUTTON ROW (Under the Header)
         Padding(

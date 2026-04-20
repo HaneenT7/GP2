@@ -21,28 +21,46 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
-  
-  late List<DateTime> _weekDates;
-  late int _selectedDayIndex;
-  
+    
+  // Initialize with dummy values so the build method doesn't crash 
+  // before initState runs
+  DateTime _currentWeekMonday = DateTime.now(); 
+  List<DateTime> _weekDates = [];
+  int _selectedDayIndex = 0;   
   String _firstName = '';
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
-  void initState() {
-    super.initState();
-    _loadUserName();
-    _initializeCalendar();
-  }
+    void initState() {
+      super.initState();
+      // ── ADD THIS LINE ──
+      _initializeCalendar(); 
+      
+      _loadUserName();
+    }
 
+  @override
   void _initializeCalendar() {
     final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    _weekDates = List.generate(7, (index) => monday.add(Duration(days: index)));
-    _selectedDayIndex = now.weekday - 1;
-  }
+    final today = DateTime(now.year, now.month, now.day);
+  
+  // Sunday becomes 0, Monday 1, etc.
+  int daysSinceSunday = now.weekday % 7; 
+  
+  _currentWeekMonday = today.subtract(Duration(days: daysSinceSunday));
+  
+  _generateWeekDates();
+  
+  // Set the selected index to today's position in a Sun-Sat week
+  // Sunday will be index 0, Monday index 1, etc.
+  _selectedDayIndex = now.weekday % 7;
+}
+
+void _generateWeekDates() {
+  _weekDates = List.generate(7, (index) => _currentWeekMonday.add(Duration(days: index)));
+}
 
   Future<void> _loadUserName() async {
     final user = _auth.currentUser;
@@ -261,26 +279,32 @@ Widget _buildExamCard({required String title, required String date, required Col
   }
 
   Widget _buildDailyTasks() {
-    final selectedDate = _weekDates[_selectedDayIndex];
-    final dateKey = DateFormat('yyyy-MM-dd').format(selectedDate);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(DateFormat('EEEE, MMMM d').format(selectedDate), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            _buildCalendarNavButtons(),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildDaysBar(),
-        const SizedBox(height: 24),
-        _buildFirestoreTasksList(dateKey),
-      ],
-    );
-  }
+  // This now correctly points to the date in the navigated week
+  final selectedDate = _weekDates[_selectedDayIndex];
+  final dateKey = DateFormat('yyyy-MM-dd').format(selectedDate);
+  
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 12),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // This will now show the correct month/year as you move weeks
+          Text(
+            DateFormat('EEEE, MMMM d').format(selectedDate), 
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)
+          ),
+          _buildCalendarNavButtons(),
+        ],
+      ),
+      const SizedBox(height: 20),
+      _buildDaysBar(),
+      const SizedBox(height: 24),
+      _buildFirestoreTasksList(dateKey),
+    ],
+  );
+}
 
   Widget _buildFirestoreTasksList(String dateKey) {
     final user = _auth.currentUser;
@@ -337,12 +361,36 @@ Widget _buildExamCard({required String title, required String date, required Col
     return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 40), child: Center(child: Text(message, style: const TextStyle(color: Colors.grey))));
   }
 
-  Widget _buildCalendarNavButtons() {
-    return Row(children: [
-      IconButton(onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex > 0) ? _selectedDayIndex - 1 : 0), icon: const Icon(Icons.chevron_left)),
-      IconButton(onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex < 6) ? _selectedDayIndex + 1 : 6), icon: const Icon(Icons.chevron_right)),
-    ]);
-  }
+Widget _buildCalendarNavButtons() {
+  return Row(
+    children: [
+      IconButton(
+        onPressed: () {
+          setState(() {
+            // Move back 7 days
+            _currentWeekMonday = _currentWeekMonday.subtract(const Duration(days: 7));
+            _generateWeekDates();
+            // Automatically select Sunday (the first day of the new week)
+            _selectedDayIndex = 0; 
+          });
+        },
+        icon: const Icon(Icons.chevron_left),
+      ),
+      IconButton(
+        onPressed: () {
+          setState(() {
+            // Move forward 7 days
+            _currentWeekMonday = _currentWeekMonday.add(const Duration(days: 7));
+            _generateWeekDates();
+            // Automatically select Sunday (the first day of the new week)
+            _selectedDayIndex = 0;
+          });
+        },
+        icon: const Icon(Icons.chevron_right),
+      ),
+    ],
+  );
+}
 
   Widget _buildDaysBar() {
     return Row(children: List.generate(_weekDates.length, (index) {

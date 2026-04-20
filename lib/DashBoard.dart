@@ -43,25 +43,26 @@ class _DashBoardState extends State<DashBoard> {
             },
           ),
           Expanded(
+            child: RepaintBoundary( // <--- Add this wrapper
             child: Container(
               color: Colors.white,
               // IndexedStack is great here because it keeps the 
               // state of each page alive in the background.
               child: IndexedStack(
                 index: _selectedIndex,
-                children: [
+                children: const [
                   // 2. FIXED: We use the Class name instead of the old method call
-                  const DashboardHomeContent(), // Index 0
+                  DashboardHomeContent(), // Index 0
                   RevPlanPage(),                // Index 1
                   SnapsBoardPage(),             // Index 2
                   CourseFoldersPage(),          // Index 3
                   BrainGamesPage(),             // Index 4
-                  const QuizLandingPage(),      // Index 5
+                  QuizLandingPage(),      // Index 5
                   ProfilePage(),                // Index 6
                 ],
               ),
             ),
-          ),
+          ),),
         ],
       ),
     );

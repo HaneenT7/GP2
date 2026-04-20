@@ -56,20 +56,29 @@ class RevisionPlanResult {
     this.completedAt,
   });
 
-  static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
-    return RevisionPlanResult(
-      requestId: data['planId'] as String? ?? '',
-      status: data['status'] as String? ?? 'pending',
-      planContent: data['planContent'] as String?,
-      errorMessage: data['errorMessage'] as String?,
-      completedAt: data['completedAt'] != null
-          ? (data['completedAt'] is Timestamp
-              ? (data['completedAt'] as Timestamp).toDate()
-              : DateTime.tryParse(data['completedAt'].toString()))
-          : null,
-    );
+static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
+  // 1. Get the status and make it lowercase
+  String rawStatus = (data['status'] as String? ?? 'pending').toLowerCase();
+
+  // 2. SAFETY CHECK: If 'status' is missing but 'dailyTasks' is present, 
+  // it means n8n finished the job but didn't write the status field yet.
+  if (rawStatus == 'pending' && data.containsKey('dailyTasks')) {
+    rawStatus = 'completed';
   }
-}
+
+  return RevisionPlanResult(
+    // In your screenshot, the field is named 'planId', not 'requestId'
+    requestId: data['planId'] as String? ?? data['requestId'] as String? ?? '', 
+    status: rawStatus,
+    planContent: data['planContent'] as String?,
+    errorMessage: data['errorMessage'] as String?,
+    completedAt: data['completedAt'] != null
+        ? (data['completedAt'] is Timestamp
+            ? (data['completedAt'] as Timestamp).toDate()
+            : DateTime.tryParse(data['completedAt'].toString()))
+        : null,
+  );
+}}
 
 /// Service to trigger revision plan generation via n8n (Gemini) and read result from Firebase.
 class RevisionPlanService {
@@ -82,7 +91,7 @@ class RevisionPlanService {
   
   // 1. INCREASE THIS: Change from 120 to 600 (10 minutes)
   // This gives Gemini plenty of time to read files and generate the plan.
-  static const Duration _listenTimeout = Duration(minutes: 4);
+  static const Duration _listenTimeout = Duration(minutes: 10);
 
   Future<void> sendToN8n(RevisionPlanRequest request) async {
     final uri = Uri.parse(n8nRevisionPlanWebhookUrl);
@@ -101,44 +110,57 @@ class RevisionPlanService {
 
   /// Listen for the plan document written by n8n. Completes when status is 'completed' or 'error', or on timeout.
   /// n8n writes to revisionPlans/{requestId} (no subcollection) so we listen at that path.
-  Future<RevisionPlanResult> waitForPlan(String userId, String requestId) async {
-    final docRef = _firestore.collection(_collection).doc(requestId);
+Future<RevisionPlanResult> waitForPlan(String userId, String requestId) async {
+  final docRef = _firestore.collection(_collection).doc(requestId);
+  final completer = Completer<RevisionPlanResult>();
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
+  Timer? timeoutTimer;
 
-    final completer = Completer<RevisionPlanResult>();
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
-    Timer? timeoutTimer;
-
-    void finish(RevisionPlanResult result) {
-      if (!completer.isCompleted) {
-        sub?.cancel();
-        timeoutTimer?.cancel();
-        completer.complete(result);
-      }
+  void finish(RevisionPlanResult result) {
+    if (!completer.isCompleted) {
+      print("DEBUG: Finishing with status: ${result.status}");
+      sub?.cancel();
+      timeoutTimer?.cancel();
+      completer.complete(result);
     }
-
-    timeoutTimer = Timer(_listenTimeout, () {
-      finish(RevisionPlanResult(
-        requestId: requestId,
-        status: 'error',
-        errorMessage: 'Timeout waiting for plan',
-      ));
-    });
-
-    sub = docRef.snapshots().listen((snap) {
-      print("DEBUG: Received snapshot for ${snap.id}. Exists: ${snap.exists}"); // ADD THIS
-      if (!snap.exists) return;
-      final data = snap.data();
-      print("DEBUG: Data from Firestore: $data"); // ADD THIS
-      if (data == null) return;
-      final result = RevisionPlanResult.fromFirestore(data);
-      print("DEBUG: Parsed status: ${result.status}"); // ADD THIS
-      if (result.status == 'completed' || result.status == 'error') {
-        finish(result);
-      }
-    });
-
-    return completer.future;
   }
+
+  // 1. Immediate Check: Did n8n already finish before we started listening?
+  final initialDoc = await docRef.get();
+  if (initialDoc.exists) {
+    final result = RevisionPlanResult.fromFirestore(initialDoc.data()!);
+    if (result.status == 'completed' || result.status == 'error') {
+      print("DEBUG: Found existing completed document immediately.");
+      return result; // Stop right here, we are done!
+    }
+  }
+
+  // 2. Set the 10-minute timeout
+  timeoutTimer = Timer(_listenTimeout, () {
+    finish(RevisionPlanResult(
+      requestId: requestId,
+      status: 'error',
+      errorMessage: 'Timeout waiting for plan',
+    ));
+  });
+
+  // 3. Listen for future changes (or the first creation)
+  sub = docRef.snapshots(includeMetadataChanges: true).listen((snap) {
+    if (!snap.exists) return;
+
+    final data = snap.data();
+    if (data == null) return;
+
+    final result = RevisionPlanResult.fromFirestore(data);
+    print("DEBUG: Stream detected update. Status: ${result.status}");
+
+    if (result.status == 'completed' || result.status == 'error') {
+      finish(result);
+    }
+  });
+
+  return completer.future;
+}
 
   /// Generate a unique request id for this user.
   String generateRequestId() {

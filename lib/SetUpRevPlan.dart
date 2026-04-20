@@ -42,15 +42,16 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header Section
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), // Reduced bottom padding
               child: Row(
                 children: [
                   IconButton(
@@ -65,34 +66,37 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                 ],
               ),
             ),
+            
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(80.0),
+                // CHANGE: Reduced 80.0 to 32.0 (or 24.0)
+                // Using symmetric padding helps keep horizontal alignment without vertical gaps
+                padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
                 children: [
                   // Select course folder
                   const Text(
                     'Select course folder',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildCourseFolderSection(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 28),
 
                   // Select exam materials
                   const Text(
                     'Select exam materials',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildExamMaterialsSection(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 28),
 
                   // Select exam date
                   const Text(
                     'Select exam date',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
@@ -111,6 +115,7 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                       child: _buildExamDateCalendar(),
                     ),
                   ),
+                  // Bottom padding to ensure the floating button doesn't cover content
                   const SizedBox(height: 100),
                 ],
               ),

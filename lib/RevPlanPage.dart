@@ -145,24 +145,31 @@ class _PlansListContainer extends StatefulWidget {
 }
 
 class _PlansListContainerState extends State<_PlansListContainer> {
+  // We initialize the state here
   bool _passedExpanded = false;
 
   @override
   Widget build(BuildContext context) {
-    // AutomaticKeepAliveClientMixin isn't strictly needed with IndexedStack, 
-    // but the RepaintBoundary is.
     return RepaintBoundary(
       child: ListView(
+        // Use physics to ensure it scrolls smoothly within the Expanded area
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
+          // 1. Render Active Plans
           ...widget.activePlans.map((doc) => RevisionPlanCard(
                 planId: doc.id,
                 planData: doc.data() as Map<String, dynamic>,
               )),
+
+          // 2. Render Passed Plans Section if they exist
           if (widget.passedPlans.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             _buildPassedHeader(),
-            if (_passedExpanded)
+            
+            // This is the part that now correctly hides/shows
+            if (_passedExpanded) ...[
+              const SizedBox(height: 16), // The space you wanted!
               ...widget.passedPlans.map((doc) => Opacity(
                     opacity: 0.6,
                     child: RevisionPlanCard(
@@ -170,6 +177,8 @@ class _PlansListContainerState extends State<_PlansListContainer> {
                       planData: doc.data() as Map<String, dynamic>,
                     ),
                   )),
+            ],
+            const SizedBox(height: 32), // Bottom padding
           ],
         ],
       ),
@@ -177,10 +186,15 @@ class _PlansListContainerState extends State<_PlansListContainer> {
   }
 
   Widget _buildPassedHeader() {
-    return GestureDetector(
-      onTap: () => setState(() => _passedExpanded = !_passedExpanded),
+    return InkWell( // Switched to InkWell for better touch feedback
+      onTap: () {
+        setState(() {
+          _passedExpanded = !_passedExpanded;
+        });
+      },
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(10),
@@ -190,10 +204,20 @@ class _PlansListContainerState extends State<_PlansListContainer> {
           children: [
             const Icon(Icons.history, size: 18, color: Colors.grey),
             const SizedBox(width: 8),
-            Text('Passed plans (${widget.passedPlans.length})',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+            Text(
+              'Passed plans (${widget.passedPlans.length})',
+              style: const TextStyle(
+                fontSize: 14, 
+                fontWeight: FontWeight.w600, 
+                color: Colors.grey
+              ),
+            ),
             const Spacer(),
-            Icon(_passedExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
+            // The icon now accurately reflects the state
+            Icon(
+              _passedExpanded ? Icons.expand_less : Icons.expand_more, 
+              color: Colors.grey
+            ),
           ],
         ),
       ),

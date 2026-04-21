@@ -8,7 +8,15 @@ import 'services/revision_plan_service.dart';
 
 class SetUpRevPlan extends StatefulWidget {
   final VoidCallback onClose;
-  const SetUpRevPlan({super.key, required this.onClose});
+
+  /// Called when plan generation succeeds. Passes the folder name
+  /// so the parent can show the loading card + success screen.
+final void Function(String folderName, String requestId) onPlanGenerated;
+  const SetUpRevPlan({
+    super.key,
+    required this.onClose,
+    required this.onPlanGenerated,
+  });
 
   @override
   State<StatefulWidget> createState() => _SetUpRevPlanState();
@@ -16,19 +24,12 @@ class SetUpRevPlan extends StatefulWidget {
 
 const Color _watadPurple = Color(0xFF423066);
 
-enum _StepState { done, active, pending }
-
 class _SetUpRevPlanState extends State<SetUpRevPlan> {
   final FolderService _folderService = FolderService();
   final FileService _fileService = FileService();
   final RevisionPlanService _revisionPlanService = RevisionPlanService();
 
-  // --- Screen state ---
-  bool _showGenerating = false;
-  bool _showSuccess = false;
-  String _successFolderName = '';
-
-  // --- Form state ---
+  bool _isSubmitting = false;
   CourseFolder? _selectedFolder;
   final Set<String> _selectedFileIds = {};
   late DateTime _selectedDate;
@@ -50,16 +51,6 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showGenerating) return _buildGeneratingScreen();
-    if (_showSuccess) return _buildSuccessScreen();
-    return _buildFormScreen();
-  }
-
-  // ─────────────────────────────────────────
-  // SCREEN 1 — FORM
-  // ─────────────────────────────────────────
-
-  Widget _buildFormScreen() {
     return Stack(
       children: [
         Column(
@@ -76,7 +67,8 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                   const SizedBox(width: 10),
                   const Text(
                     'Create new Revision Plan',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -124,21 +116,31 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
             ),
           ],
         ),
+
+        // Generate button
         Positioned(
           right: 32,
           bottom: 32,
           child: ElevatedButton.icon(
-            onPressed: _onGenerateRevisionPlan,
-            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 23),
-            label: const Text(
-              'Generate Revision Plan',
-              style: TextStyle(
+            onPressed: _isSubmitting ? null : _onGenerateRevisionPlan,
+            icon: _isSubmitting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.auto_awesome,
+                    color: Colors.white, size: 23),
+            label: Text(
+              _isSubmitting ? 'Sending…' : 'Generate Revision Plan',
+              style: const TextStyle(
                   color: Colors.white, fontWeight: FontWeight.bold),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: _watadPurple,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 24, vertical: 20),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
@@ -149,335 +151,63 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
   }
 
   // ─────────────────────────────────────────
-  // SCREEN 2 — GENERATING
-  // ─────────────────────────────────────────
-
-  Widget _buildGeneratingScreen() {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOut,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: child,
-        ),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.elasticOut,
-                builder: (context, value, child) =>
-                    Transform.scale(scale: value, child: child),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEDE9FA),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(18),
-                    child: CircularProgressIndicator(
-                      color: _watadPurple,
-                      strokeWidth: 3,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                'Building your plan…',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Analysing your materials and scheduling study sessions up to your exam date. This may take a moment.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey[600],
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: 36),
-              _buildStep(
-                icon: Icons.description_outlined,
-                label: 'Reading your uploaded materials',
-                state: _StepState.done,
-              ),
-              const SizedBox(height: 10),
-              _buildStep(
-                icon: Icons.schedule,
-                label: 'Scheduling study sessions',
-                state: _StepState.active,
-              ),
-              const SizedBox(height: 10),
-              _buildStep(
-                icon: Icons.auto_awesome,
-                label: 'Finalising your plan',
-                state: _StepState.pending,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  Widget _buildStep({
-    required IconData icon,
-    required String label,
-    required _StepState state,
-  }) {
-    final isActive = state == _StepState.active;
-    final isDone = state == _StepState.done;
-    final isPending = state == _StepState.pending;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isActive ? _watadPurple : Colors.grey.shade200,
-          width: isActive ? 1.5 : 0.5,
-        ),
-      ),
-      child: Opacity(
-        opacity: isPending ? 0.45 : 1.0,
-        child: Row(
-          children: [
-            Icon(icon,
-                size: 18,
-                color: isActive ? _watadPurple : Colors.grey),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight:
-                      isActive ? FontWeight.w600 : FontWeight.normal,
-                  color: isActive ? Colors.black87 : Colors.grey[600],
-                ),
-              ),
-            ),
-            if (isDone)
-              const Icon(Icons.check_rounded,
-                  size: 16, color: Color(0xFF639922)),
-            if (isActive)
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: _watadPurple,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────
-  // SCREEN 3 — SUCCESS
-  // ─────────────────────────────────────────
-
-  Widget _buildSuccessScreen() {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOut,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 24 * (1 - value)),
-          child: child,
-        ),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.elasticOut,
-                builder: (context, value, child) =>
-                    Transform.scale(scale: value, child: child),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEDE9FA),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: _watadPurple,
-                    size: 40,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                'Plan ready!',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Your revision plan for $_successFolderName has been created with study sessions up to your exam date.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey[600],
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: 36),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: widget.onClose,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _watadPurple,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text(
-                    'View my plan',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => setState(() {
-                    _showSuccess = false;
-                    _selectedFolder = null;
-                    _selectedFileIds.clear();
-                    _selectedDate = _dateOnly(DateTime.now());
-                  }),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: _watadPurple, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text(
-                    'Create another plan',
-                    style: TextStyle(
-                        color: _watadPurple,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────
   // LOGIC
   // ─────────────────────────────────────────
 
-  Future<void> _onGenerateRevisionPlan() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) {
-      _showSnackBar('Please sign in to generate a plan.', isError: true);
-      return;
-    }
-    if (_selectedFolder == null) {
-      _showSnackBar('Please select a course folder.', isError: true);
-      return;
-    }
-    if (_selectedFileIds.isEmpty) {
-      _showSnackBar('Please select at least one exam material.',
-          isError: true);
-      return;
-    }
-
-    setState(() => _showGenerating = true);
-
-    try {
-      final files =
-          await _fileService.getFiles(_selectedFolder!.id).first;
-      final selectedFiles =
-          files.where((f) => _selectedFileIds.contains(f.id)).toList();
-      final selectedFileNames =
-          selectedFiles.map((f) => f.fileName).toList();
-      final fileUrls = selectedFiles.map((f) => f.fileUrl).toList();
-      final requestId = _revisionPlanService.generateRequestId();
-
-      final request = RevisionPlanRequest(
-        userId: userId,
-        requestId: requestId,
-        folderId: _selectedFolder!.id,
-        folderName: _selectedFolder!.name,
-        examDateIso:
-            _selectedDate.toIso8601String().split('T').first,
-        selectedFileIds: _selectedFileIds.toList(),
-        selectedFileNames: selectedFileNames,
-        selectedFileUrls: fileUrls,
-      );
-
-      final result = await _revisionPlanService.generatePlan(request);
-      if (!mounted) return;
-
-      if (result.status == 'completed') {
-        setState(() {
-          _showGenerating = false;
-          _showSuccess = true;
-          _successFolderName =
-              _selectedFolder?.name ?? 'your course';
-        });
-      } else {
-        setState(() => _showGenerating = false);
-        _showSnackBar(
-          result.errorMessage ??
-              'Something went wrong. Please try again.',
-          isError: true,
-        );
-      }
-    } catch (e) {
-      if (mounted) setState(() => _showGenerating = false);
+Future<void> _onGenerateRevisionPlan() async {
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+  if (userId == null) {
+    _showSnackBar('Please sign in to generate a plan.', isError: true);
+    return;
+  }
+  if (_selectedFolder == null) {
+    _showSnackBar('Please select a course folder.', isError: true);
+    return;
+  }
+  if (_selectedFileIds.isEmpty) {
+    _showSnackBar('Please select at least one exam material.', isError: true);
+    return;
+  }
+ 
+  setState(() => _isSubmitting = true);
+ 
+  try {
+    final files = await _fileService.getFiles(_selectedFolder!.id).first;
+    final selectedFiles =
+        files.where((f) => _selectedFileIds.contains(f.id)).toList();
+ 
+    final request = RevisionPlanRequest(
+      userId: userId,
+      requestId: _revisionPlanService.generateRequestId(),
+      folderId: _selectedFolder!.id,
+      folderName: _selectedFolder!.name,
+      examDateIso: _selectedDate.toIso8601String().split('T').first,
+      selectedFileIds: _selectedFileIds.toList(),
+      selectedFileNames: selectedFiles.map((f) => f.fileName).toList(),
+      selectedFileUrls: selectedFiles.map((f) => f.fileUrl).toList(),
+    );
+ 
+    // Just send to n8n — do NOT await the result here.
+    // RevPlanPage will listen for completion in the background.
+    await _revisionPlanService.sendToN8n(request);
+ 
+    // Close the form and hand off the folder name + requestId to parent.
+    widget.onPlanGenerated(
+      _selectedFolder!.name,
+      request.requestId, // <-- pass requestId so RevPlanPage can listen
+    );
+ 
+  } catch (e) {
+    if (mounted) {
+      setState(() => _isSubmitting = false);
       _showSnackBar(
         'Error: ${e.toString().replaceFirst(RegExp(r'^Exception: '), '')}',
         isError: true,
       );
     }
   }
-
+}
+ 
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -515,15 +245,13 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
 
     if (isPast) {
       return Center(
-        child: Text(
-          '${date.day}',
-          style: TextStyle(
-            color: Colors.grey.shade500,
-            decoration: TextDecoration.lineThrough,
-            decorationColor: Colors.grey.shade600,
-            fontSize: 15,
-          ),
-        ),
+        child: Text('${date.day}',
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              decoration: TextDecoration.lineThrough,
+              decorationColor: Colors.grey.shade600,
+              fontSize: 15,
+            )),
       );
     }
 
@@ -608,8 +336,8 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
             IconButton(
               visualDensity: VisualDensity.compact,
               onPressed: _canGoToPreviousMonth(today)
-                  ? () => setState(
-                      () => _calendarDisplayMonth = DateTime(y, m - 1, 1))
+                  ? () => setState(() =>
+                      _calendarDisplayMonth = DateTime(y, m - 1, 1))
                   : null,
               icon: const Icon(Icons.chevron_left),
             ),
@@ -657,7 +385,8 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
             itemBuilder: (context, index) {
               if (index < leading) return const SizedBox.shrink();
               final dayNum = index - leading + 1;
-              if (dayNum > daysInMonth) return const SizedBox.shrink();
+              if (dayNum > daysInMonth)
+                return const SizedBox.shrink();
               return _buildDayCell(DateTime(y, m, dayNum), today);
             },
           ),
@@ -684,14 +413,16 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Padding(
                 padding: EdgeInsets.all(24.0),
-                child: Center(child: CircularProgressIndicator()));
+                child:
+                    Center(child: CircularProgressIndicator()));
           }
           if (snapshot.hasError) {
             return Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Center(
                     child: Text('Error loading folders',
-                        style: TextStyle(color: Colors.red[700]))));
+                        style:
+                            TextStyle(color: Colors.red[700]))));
           }
           final folders = snapshot.data ?? [];
           if (folders.isEmpty) {
@@ -712,9 +443,10 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
               spacing: 10,
               runSpacing: 10,
               children: folders.map((folder) {
-                final isSelected = _selectedFolder?.id == folder.id;
-                final folderColor = Color(
-                    int.parse(folder.color.replaceFirst('#', '0xFF')));
+                final isSelected =
+                    _selectedFolder?.id == folder.id;
+                final folderColor = Color(int.parse(
+                    folder.color.replaceFirst('#', '0xFF')));
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -742,8 +474,9 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.folder,
-                              color:
-                                  isSelected ? folderColor : Colors.grey,
+                              color: isSelected
+                                  ? folderColor
+                                  : Colors.grey,
                               size: 22),
                           const SizedBox(width: 8),
                           Text(folder.name,
@@ -789,19 +522,20 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
           : StreamBuilder<List<FolderFile>>(
               stream: _fileService.getFiles(_selectedFolder!.id),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const Padding(
                       padding: EdgeInsets.all(24.0),
-                      child:
-                          Center(child: CircularProgressIndicator()));
+                      child: Center(
+                          child: CircularProgressIndicator()));
                 }
                 if (snapshot.hasError) {
                   return Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Center(
                           child: Text('Error loading files',
-                              style:
-                                  TextStyle(color: Colors.red[700]))));
+                              style: TextStyle(
+                                  color: Colors.red[700]))));
                 }
                 final files = snapshot.data ?? [];
                 if (files.isEmpty) {
@@ -836,8 +570,8 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                                     : Colors.grey[700]),
                             const SizedBox(width: 6),
                             ConstrainedBox(
-                              constraints:
-                                  const BoxConstraints(maxWidth: 200),
+                              constraints: const BoxConstraints(
+                                  maxWidth: 200),
                               child: Text(
                                 file.fileName,
                                 overflow: TextOverflow.ellipsis,
@@ -856,7 +590,8 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                             _selectedFileIds.remove(file.id);
                           }
                         }),
-                        selectedColor: _watadPurple.withOpacity(0.85),
+                        selectedColor:
+                            _watadPurple.withOpacity(0.85),
                         checkmarkColor: Colors.white,
                       );
                     }).toList(),

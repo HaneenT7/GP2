@@ -42,6 +42,27 @@ class _RevPlanPageState extends State<RevPlanPage> {
       _successFolderName = folderName;
     });
   }
+  OverlayEntry? _toastEntry;
+
+void _showToast(String folderName) {
+  _toastEntry?.remove();
+
+  _toastEntry = OverlayEntry(
+    builder: (context) => Positioned(
+      top: 24,
+      right: 24,
+      child: _ToastNotification(
+        folderName: folderName,
+        onDismiss: () {
+          _toastEntry?.remove();
+          _toastEntry = null;
+        },
+      ),
+    ),
+  );
+
+  Overlay.of(context).insert(_toastEntry!);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -68,13 +89,9 @@ class _RevPlanPageState extends State<RevPlanPage> {
               onCompleted: (result) {
                 if (!mounted) return;
                 if (result.status == 'completed') {
-                  setState(() {
-                    _generatingFolderName = null; // remove loading card
-                    _showSuccess = true;
-                    _successFolderName = folderName;
-                  });
+                  setState(() => _generatingFolderName = null);
+                  _showToast(folderName);
                 } else {
-                  // Error case — remove loading card and show snackbar
                   setState(() => _generatingFolderName = null);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -814,6 +831,134 @@ class _EmptyState extends StatelessWidget {
           const Text('No revision plans yet',
               style: TextStyle(fontSize: 18, color: Colors.grey)),
         ],
+      ),
+    );
+  }
+}
+
+class _ToastNotification extends StatefulWidget {
+  final String folderName;
+  final VoidCallback onDismiss;
+
+  const _ToastNotification({
+    required this.folderName,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_ToastNotification> createState() => _ToastNotificationState();
+}
+
+class _ToastNotificationState extends State<_ToastNotification>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0.3, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    // Animate in
+    _controller.forward();
+
+    // Auto dismiss after 4 seconds
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) {
+        _controller.reverse().then((_) => widget.onDismiss());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slide,
+      child: FadeTransition(
+        opacity: _opacity,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 320),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEDE9FA),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Color(0xFF423066),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Plan ready!',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${widget.folderName} revision plan has been created.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () =>
+                      _controller.reverse().then((_) => widget.onDismiss()),
+                  child: Icon(Icons.close, size: 16, color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -86,11 +86,11 @@ class DashboardHomeContent extends StatelessWidget {
             children: [
               const AppHeader(title: 'Dashboard'),
               Padding(
-                padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
+                padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
                     const GreetingWidget(), // Extracted greeting
                     const SizedBox(height: 28),
                     const UpcomingExamsSection(), // Extracted exams
@@ -146,7 +146,6 @@ class _GreetingWidgetState extends State<GreetingWidget> {
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});
 
-  // Helper methods moved inside the class so it's self-contained
   DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
     final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
     if (raw is Timestamp) return raw.toDate();
@@ -165,78 +164,88 @@ class UpcomingExamsSection extends StatelessWidget {
         .collection('revisionPlans')
         .where('userId', isEqualTo: user.uid)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
-              .toList(),
-        );
-  }
+        .map((snapshot) => snapshot.docs
+            .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+            .toList());
+    }
+
+
 @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 1,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
-                  const SizedBox(width: 8),
-                  const Text('Upcoming Exams', 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black)),
-                  const Text(' *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _revisionPlansStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final today = DateTime.now();
-                  final startToday = DateTime(today.year, today.month, today.day);
-                  final plans = (snapshot.data ?? [])
-                      .where((p) => _examDateFromPlan(p) != null)
-                      .toList()
-                    ..sort((a, b) => _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
+    return IntrinsicHeight( // Ensures both columns in the Row have the same height
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch, // Makes children fill vertical space
+        children: [
+          Expanded(
+            flex: 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
+                    const SizedBox(width: 8),
+                    const Text('Upcoming Exams', 
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black)),
+                    const Text(' *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded( // Allows the StreamBuilder content to dictate height or fill it
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _revisionPlansStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final today = DateTime.now();
+                      final startToday = DateTime(today.year, today.month, today.day);
+                      final plans = (snapshot.data ?? [])
+                          .where((p) => _examDateFromPlan(p) != null)
+                          .toList()
+                        ..sort((a, b) => _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
 
-                  final upcoming = plans.where((p) => !_examDateFromPlan(p)!.isBefore(startToday)).take(2).toList();
+                      final upcoming = plans.where((p) => !_examDateFromPlan(p)!.isBefore(startToday)).take(2).toList();
 
-                  if (upcoming.isEmpty) {
-                    return Container(
-                      width: double.infinity, padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)),
-                      child: const Text('No upcoming exams yet.', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                    );
-                  }
+                      if (upcoming.isEmpty) {
+                        return Container(
+                          width: double.infinity, 
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)),
+                          child: const Text('No upcoming exams yet.', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                        );
+                      }
 
-                  return Column(
-                    children: List.generate(upcoming.length, (index) {
-                      final plan = upcoming[index];
-                      final examDate = _examDateFromPlan(plan)!;
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
-                        child: _ExamCardWidget( // Use a small helper widget below
-                          title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                          date: '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
-                          color: index.isEven ? const Color(0xFFFFF3CD) : const Color(0xFFFFE4CC),
-                        ),
+                      return Column(
+                        children: List.generate(upcoming.length, (index) {
+                          final plan = upcoming[index];
+                          final examDate = _examDateFromPlan(plan)!;
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
+                            child: _ExamCardWidget(
+                              title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
+                              date: '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                              color: index.isEven ? const Color(0xFFFFF3CD) : const Color(0xFFFFE4CC),
+                            ),
+                          );
+                        }),
                       );
-                    }),
-                  );
-                },
-              ),
-            ],
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 24),
-        const Expanded(flex: 1, child: QuoteCardWidget()), // Extracted this too for speed
-      ],
+          const SizedBox(width: 24),
+          const Expanded(
+            flex: 1, 
+            child: Padding(
+              padding: EdgeInsets.only(top: 34), // Align with the start of the first exam card
+              child: QuoteCardWidget(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -250,7 +259,8 @@ class _ExamCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      // Reduced vertical padding from 18 to 12
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), 
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -268,28 +278,34 @@ class QuoteCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      // Reduced vertical padding from 24 to 14
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('"', style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
+              // Shrunk quote mark size
+              const Text('"', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 8),
+                  padding: const EdgeInsets.only(top: 4, left: 8),
                   child: Text('Follow your plan, not your mood', 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade800)),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade800)),
                 ),
               ),
             ],
           ),
-          Positioned(right: 0, bottom: -8, child: Icon(Icons.psychology, size: 56, color: const Color(0xFF7C3AED).withOpacity(0.5))),
+          Positioned(
+            right: -5, 
+            bottom: -5, 
+            // Shrunk psychology icon size
+            child: Icon(Icons.psychology, size: 40, color: const Color(0xFF7C3AED).withOpacity(0.3))
+          ),
         ],
       ),
     );
@@ -426,9 +442,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     );
   }
 
-  Widget _buildFirestoreTasksList(String dateKey) {
+Widget _buildFirestoreTasksList(String dateKey) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please sign in."));
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('revisionPlans')
@@ -437,7 +454,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildNoTasksPlaceholder("No revision plans found.");
-        
+
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -459,9 +476,25 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             }
           } catch (_) {}
         }
-        return dailyTaskWidgets.isEmpty 
-            ? _buildNoTasksPlaceholder("Relax! No tasks for today.") 
-            : Wrap(spacing: 16, runSpacing: 16, children: dailyTaskWidgets);
+
+        if (dailyTaskWidgets.isEmpty) return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+
+        // Use LayoutBuilder to calculate 50% width minus spacing
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final double itemWidth = (constraints.maxWidth - 16) / 2; // 16 is the spacing between items
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: dailyTaskWidgets.map((widget) {
+                return SizedBox(
+                  width: itemWidth,
+                  child: widget,
+                );
+              }).toList(),
+            );
+          },
+        );
       },
     );
   }
@@ -475,18 +508,19 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     required List fullDailyTasks,
     required String dateKey,
   }) {
+    // Removed the manual MediaQuery width calculation here as it's now handled by the parent SizedBox
     return Container(
-      width: (MediaQuery.of(context).size.width - 400) / 2,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8E8E8)),
+        border: Border.all(color: isCompleted ? Colors.green.shade100 : const Color(0xFFE8E8E8)),
       ),
       child: Row(
         children: [
           InkWell(
             onTap: () async {
+              // ... keep your existing logic for updating Firestore
               for (var day in fullDailyTasks) {
                 if (day['date'] == dateKey) {
                   for (var t in day['tasks']) {
@@ -506,8 +540,21 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(folder, style: const TextStyle(fontSize: 12)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                    color: isCompleted ? Colors.green.shade700 : Colors.black87,
+                  ),
+                ),
+                Text(
+                  folder,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isCompleted ? Colors.green.shade400 : Colors.grey,
+                  ),
+                ),
               ],
             ),
           ),

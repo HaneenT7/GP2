@@ -378,6 +378,12 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
         final dayData = _findDayData(dailyTasks, day);
         final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
         final hasOverdueOnDay = weekDayHasOverdueIncomplete(dailyTasks, day);
+        final tileBackground = hasOverdueOnDay
+            ? (isSelected ? Colors.deepOrange.shade100 : Colors.deepOrange.shade50)
+            : (isSelected ? Colors.grey[300]! : Colors.grey[100]!);
+        final tileBorder = hasOverdueOnDay
+            ? (isSelected ? Colors.deepOrange.shade700 : Colors.deepOrange.shade300)
+            : (isSelected ? Colors.black87 : Colors.grey[300]!);
 
         return Expanded(
           child: Padding(
@@ -393,11 +399,12 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.grey[300] : Colors.grey[100],
+                  color: tileBackground,
                   borderRadius: BorderRadius.circular(10),
-                  border: isSelected
-                      ? Border.all(color: Colors.black87, width: 1.5)
-                      : Border.all(color: Colors.grey[300]!),
+                  border: Border.all(
+                    color: tileBorder,
+                    width: isSelected ? 1.5 : 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.04),
@@ -736,6 +743,16 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
     );
   }
 Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
+    final rawTasks = planData['dailyTasks'];
+    List<dynamic> dailyTasks = [];
+    if (rawTasks is String) {
+      try {
+        dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
+      } catch (_) {}
+    } else if (rawTasks is List) {
+      dailyTasks = rawTasks;
+    }
+
     return Material(
       color: Colors.deepOrange.shade50,
       child: Padding(
@@ -745,14 +762,21 @@ Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
             Icon(Icons.schedule, size: 20, color: Colors.deepOrange.shade800),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                count == 1
-                    ? '1 overdue task (past days, not completed)'
-                    : '$count overdue tasks (past days, not completed)',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.deepOrange.shade900,
-                  fontWeight: FontWeight.w500,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _jumpToFirstOverdueDay(dailyTasks),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    count == 1
+                        ? '1 overdue task (past days, not completed)'
+                        : '$count overdue tasks (past days, not completed)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.deepOrange.shade900,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -773,6 +797,35 @@ Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
       ),
     );
   }
+
+DateTime? _firstOverdueDay(List<dynamic> dailyTasks) {
+  DateTime? first;
+  for (final day in dailyTasks) {
+    if (day is! Map) continue;
+    final dateStr = day['date']?.toString();
+    if (dateStr == null) continue;
+    final dayDate = DateTime.tryParse(dateStr);
+    if (dayDate == null) continue;
+    final tasks = day['tasks'] as List<dynamic>? ?? [];
+    final hasOverdue = tasks.any(
+      (t) => t is Map && isRevisionTaskOverdue(dayDate, t),
+    );
+    if (!hasOverdue) continue;
+    if (first == null || dayDate.isBefore(first)) {
+      first = dayDate;
+    }
+  }
+  return first;
+}
+
+void _jumpToFirstOverdueDay(List<dynamic> dailyTasks) {
+  final overdueDay = _firstOverdueDay(dailyTasks);
+  if (overdueDay == null) return;
+  setState(() {
+    _selectedDate = DateTime(overdueDay.year, overdueDay.month, overdueDay.day);
+    _viewMode = 'day';
+  });
+}
 
 Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOverdue}) {
   final isCompleted = task['completed'] == true;

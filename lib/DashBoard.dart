@@ -517,9 +517,101 @@ Widget _buildExamCard({required String title, required String date, required Col
         ),
         const SizedBox(height: 20),
         _buildDaysBar(),
+        const SizedBox(height: 12),
+        _buildOverdueInfoBar(dateKey),
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
+    );
+  }
+
+  bool _isDateBeforeToday(String dateKey) {
+    final d = DateTime.tryParse(dateKey);
+    if (d == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final day = DateTime(d.year, d.month, d.day);
+    return day.isBefore(today);
+  }
+
+  Widget _buildOverdueInfoBar(String dateKey) {
+    final user = _auth.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore
+          .collection('revisionPlans')
+          .where('userId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        int overdueOnSelectedDay = 0;
+        int totalOverdue = 0;
+
+        for (final doc in snapshot.data!.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final rawDailyTasks = data['dailyTasks'];
+          List<dynamic> daysList = [];
+
+          if (rawDailyTasks is String) {
+            try {
+              daysList = jsonDecode(rawDailyTasks) as List<dynamic>;
+            } catch (_) {
+              daysList = [];
+            }
+          } else if (rawDailyTasks is List) {
+            daysList = rawDailyTasks;
+          }
+
+          for (final day in daysList) {
+            if (day is! Map) continue;
+            final dayDateKey = day['date']?.toString();
+            if (dayDateKey == null || !_isDateBeforeToday(dayDateKey)) continue;
+            final tasks = day['tasks'] as List<dynamic>? ?? [];
+            for (final task in tasks) {
+              if (task is! Map) continue;
+              if (task['completed'] == true) continue;
+              totalOverdue++;
+              if (dayDateKey == dateKey) {
+                overdueOnSelectedDay++;
+              }
+            }
+          }
+        }
+
+        if (totalOverdue == 0) return const SizedBox.shrink();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.deepOrange.shade50,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.deepOrange.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.deepOrange.shade800),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  overdueOnSelectedDay > 0
+                      ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
+                      : 'Total overdue tasks: $totalOverdue',
+                  style: TextStyle(
+                    color: Colors.deepOrange.shade900,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -551,11 +643,15 @@ Widget _buildExamCard({required String title, required String date, required Col
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
           final folderName = data['folderName'] ?? 'Unknown Course';
-          final dailyTasksString = data['dailyTasks'] as String? ?? '[]';
+          final rawDailyTasks = data['dailyTasks'];
+          List<dynamic> daysList = [];
           
           try {
-            // Decode the JSON string into a List
-            final List<dynamic> daysList = jsonDecode(dailyTasksString);
+            if (rawDailyTasks is String) {
+              daysList = jsonDecode(rawDailyTasks) as List<dynamic>;
+            } else if (rawDailyTasks is List) {
+              daysList = rawDailyTasks;
+            }
             
             // Find the day matching our selected date
             final dayData = daysList.firstWhere(
@@ -571,6 +667,7 @@ Widget _buildExamCard({required String title, required String date, required Col
                     title: task['title'] ?? 'Revision Task',
                     folder: folderName,
                     isCompleted: task['completed'] ?? false,
+                    isOverdue: _isDateBeforeToday(dateKey) && (task['completed'] != true),
                     taskId: task['taskId'],
                     docId: doc.id,
                     fullDailyTasks: daysList,
@@ -605,6 +702,7 @@ Widget _buildExamCard({required String title, required String date, required Col
     required String title,
     required String folder,
     required bool isCompleted,
+    required bool isOverdue,
     required String taskId,
     required String docId,
     required List<dynamic> fullDailyTasks,
@@ -615,7 +713,14 @@ Widget _buildExamCard({required String title, required String date, required Col
       decoration: BoxDecoration(
         color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isCompleted ? Colors.transparent : const Color(0xFFE8E8E8)),
+        border: Border.all(
+          color: isCompleted
+              ? Colors.transparent
+              : isOverdue
+                  ? Colors.deepOrange.shade300
+                  : const Color(0xFFE8E8E8),
+          width: isOverdue && !isCompleted ? 1.5 : 1,
+        ),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
       ),
       child: Row(
@@ -635,11 +740,30 @@ Widget _buildExamCard({required String title, required String date, required Col
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, 
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isCompleted
+                        ? Colors.black54
+                        : isOverdue
+                            ? Colors.deepOrange.shade900
+                            : Colors.black87,
+                  ),
                   maxLines: 2, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
                 Text("$folder ",
                   style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                if (isOverdue && !isCompleted) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Overdue',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.deepOrange.shade800,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -694,11 +818,18 @@ Widget _buildExamCard({required String title, required String date, required Col
     return Row(
       children: [
         IconButton(
-          onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex > 0) ? _selectedDayIndex - 1 : _selectedDayIndex),
+          onPressed: () => setState(() {
+            _weekDates = _weekDates
+                .map((d) => d.subtract(const Duration(days: 7)))
+                .toList();
+          }),
           icon: const Icon(Icons.chevron_left),
         ),
         IconButton(
-          onPressed: () => setState(() => _selectedDayIndex = (_selectedDayIndex < 6) ? _selectedDayIndex + 1 : _selectedDayIndex),
+          onPressed: () => setState(() {
+            _weekDates =
+                _weekDates.map((d) => d.add(const Duration(days: 7))).toList();
+          }),
           icon: const Icon(Icons.chevron_right),
         ),
       ],

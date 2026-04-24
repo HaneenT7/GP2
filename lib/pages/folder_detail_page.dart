@@ -6,6 +6,7 @@ import '../models/course_folder.dart';
 import '../models/folder_file.dart';
 import '../services/file_service.dart';
 import 'pdf_viewer_page.dart';
+import '../services/folder_service.dart';
 
 class FolderDetailPage extends StatefulWidget {
   final CourseFolder folder;
@@ -18,6 +19,8 @@ class FolderDetailPage extends StatefulWidget {
 
 class _FolderDetailPageState extends State<FolderDetailPage> {
   final FileService _fileService = FileService();
+  final FolderService _folderService = FolderService();
+
   bool _isUploading = false;
 
   @override
@@ -95,67 +98,70 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
           ),
           const Divider(height: 1),
           // Files list
-          Expanded(
-            child: StreamBuilder<List<FolderFile>>(
-              stream: _fileService.getFiles(widget.folder.id),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+          // Files grid
+Expanded(
+  child: StreamBuilder<List<FolderFile>>(
+    stream: _fileService.getFiles(widget.folder.id),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Error: ${snapshot.error}'),
-                  );
-                }
+      if (snapshot.hasError) {
+        return Center(
+          child: Text('Error: ${snapshot.error}'),
+        );
+      }
 
-                final files = snapshot.data ?? [];
+      final files = snapshot.data ?? [];
 
-                if (files.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No files yet',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Click the upload button to add PDF files',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return SizedBox(
-                  height: 200,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: files.length,
-                    itemBuilder: (context, index) {
-                      return _buildFileCard(files[index]);
-                    },
-                  ),
-                );
-              },
-            ),
+      if (files.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.description_outlined,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No files yet',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Click the upload button to add PDF files',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
           ),
+        );
+      }
+
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 2.3,
+        ),
+        itemCount: files.length,
+        itemBuilder: (context, index) {
+          return _buildFileCard(files[index]);
+        },
+      );
+    },
+  ),
+),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -175,152 +181,86 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
     );
   }
 
-  Widget _buildFileCard(FolderFile file) {
-    final dateStr = _formatDate(file.uploadedAt);
-    final fileNameWithoutExt = file.fileName.replaceAll('.pdf', '').replaceAll('.PDF', '');
-    
-    return Container(
-      width: 280,
-      height: 200,
-      margin: const EdgeInsets.only(right: 16),
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: InkWell(
-          onTap: () => _openFile(file),
-          borderRadius: BorderRadius.circular(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Content area (top part)
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // PDF icon and file name
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.red[50],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.picture_as_pdf,
-                              color: Colors.red,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              fileNameWithoutExt,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // File info
-                      Text(
-                        'Size: ${_formatFileSize(file.fileSize)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Bottom label bar
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(12),
-                    bottomRight: Radius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dateStr,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            fileNameWithoutExt,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[700],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuButton(
-                      icon: const Icon(Icons.more_vert, size: 20),
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'open',
-                          child: Row(
-                            children: [
-                              Icon(Icons.open_in_new, size: 18),
-                              SizedBox(width: 8),
-                              Text('Open'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete, size: 18, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('Delete', style: TextStyle(color: Colors.red)),
-                            ],
-                          ),
-                        ),
-                      ],
-                      onSelected: (value) {
-                        if (value == 'open') {
-                          _openFile(file);
-                        } else if (value == 'delete') {
-                          _deleteFile(file);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
+Widget _buildFileCard(FolderFile file) {
+  final fileNameWithoutExt =
+      file.fileName.replaceAll('.pdf', '').replaceAll('.PDF', '');
+
+  return Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: InkWell(
+      onTap: () => _openFile(file),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    // PDF icon
+    Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(
+        Icons.picture_as_pdf,
+        color: Colors.red,
+        size: 28,
+      ),
+    ),
+
+    const SizedBox(height: 8),
+
+    // File name
+    Text(
+      fileNameWithoutExt,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    ),
+
+    const SizedBox(height: 6),
+
+    // Bottom row
+    Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          _formatFileSize(file.fileSize),
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
           ),
         ),
+        PopupMenuButton(
+          icon: const Icon(Icons.more_vert, size: 18),
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'open', child: Text('Open')),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+          onSelected: (value) {
+            if (value == 'open') _openFile(file);
+            if (value == 'delete') _deleteFile(file);
+          },
+        ),
+      ],
+    ),
+  ],
+)
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _uploadFile() async {
     try {
@@ -412,6 +352,7 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
 
       try {
         await _fileService.uploadFile(widget.folder.id, fileData, fileName, fileSize);
+        await _folderService.touchFolder(widget.folder.id); 
         if (mounted) {
           _showUploadSuccessDialog();
         }
@@ -483,6 +424,7 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
     if (confirmed == true) {
       try {
         await _fileService.deleteFile(file);
+        await _folderService.touchFolder(widget.folder.id); 
         if (mounted) {
           Navigator.pop(context); // Close delete confirmation dialog
           _showDeleteSuccessDialog();

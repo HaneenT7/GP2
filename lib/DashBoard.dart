@@ -53,11 +53,11 @@ class _DashBoardState extends State<DashBoard> {
                 children: const [
                   // 2. FIXED: We use the Class name instead of the old method call
                   DashboardHomeContent(), // Index 0
-                  RevPlanPage(),                // Index 1
-                  SnapsBoardPage(),             // Index 2
-                  CourseFoldersPage(),          // Index 3
-                  BrainGamesPage(),             // Index 4
-                  QuizLandingPage(),      // Index 5
+                  CourseFoldersPage(),          // Index 1
+                  RevPlanPage(),                // Index 2
+                  QuizLandingPage(),            // Index 3
+                  SnapsBoardPage(),             // Index 4
+                  BrainGamesPage(),             // Index 5
                   ProfilePage(),                // Index 6
                 ],
               ),

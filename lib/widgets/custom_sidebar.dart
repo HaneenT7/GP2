@@ -34,11 +34,11 @@ class CustomSidebar extends StatelessWidget {
             const SizedBox(height: 4),
 
             _buildNavItem(Icons.dashboard, 0, 'Dashboard'),
-            _buildNavItem(Icons.checklist, 1, 'Revision Plan'),
-            _buildSlantedNavItem(Icons.push_pin, 2, 'Snaps Board'),
-            _buildNavItem(Icons.folder, 3, 'Course Folder'),
-            _buildNavItem(Icons.psychology, 4, 'Brain Games'),
-            _buildPenAndBookNavItem(5, 'Quiz'),
+            _buildNavItem(Icons.folder, 1, 'Course Folder'),
+            _buildNavItem(Icons.checklist, 2, 'Revision Plan'),
+            _buildPenAndBookNavItem(3, 'Quiz'),
+            _buildSlantedNavItem(Icons.push_pin, 4, 'Snaps Board'),
+            _buildNavItem(Icons.psychology, 5, 'Brain Games'),
 
             const Spacer(),
 

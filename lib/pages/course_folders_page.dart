@@ -36,7 +36,7 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
     body: Column(
       children: [
         // 1. THE UNIFIED GLOBAL HEADER
-        const AppHeader(title: 'My Course folders'),
+        const AppHeader(title: 'Course folders'),
 
         // 2. ACTION BUTTONS ROW (Manage & New)
         Padding(

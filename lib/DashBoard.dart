@@ -9,12 +9,11 @@ import 'RevPlanPage.dart';
 import 'pages/snaps_board_page.dart';
 import 'pages/brain_games_page.dart';
 import 'pages/profile_page.dart';
-import 'pages/quiz_landing_page.dart'; // Import the extracted page
+import 'pages/quiz_landing_page.dart'; 
 import 'package:gp2_watad/widgets/app_header.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
-  
 
   @override
   State<StatefulWidget> createState() => _DashBoardState();
@@ -24,12 +23,6 @@ class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
   
   @override
-    void initState() {
-      super.initState();
-    }
-
-
-@override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Row(
@@ -43,26 +36,24 @@ class _DashBoardState extends State<DashBoard> {
             },
           ),
           Expanded(
-            child: RepaintBoundary( // <--- Add this wrapper
-            child: Container(
-              color: Colors.white,
-              // IndexedStack is great here because it keeps the 
-              // state of each page alive in the background.
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: const [
-                  // 2. FIXED: We use the Class name instead of the old method call
-                  DashboardHomeContent(), // Index 0
-                  CourseFoldersPage(),          // Index 1
-                  RevPlanPage(),                // Index 2
-                  QuizLandingPage(),            // Index 3
-                  SnapsBoardPage(),             // Index 4
-                  BrainGamesPage(),             // Index 5
-                  ProfilePage(),                // Index 6
-                ],
+            child: RepaintBoundary( 
+              child: Container(
+                color: Colors.white,
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: const [
+                    DashboardHomeContent(), // Index 0
+                    RevPlanPage(),          // Index 1
+                    SnapsBoardPage(),       // Index 2
+                    CourseFoldersPage(),    // Index 3
+                    BrainGamesPage(),       // Index 4
+                    QuizLandingPage(),      // Index 5
+                    ProfilePage(),          // Index 6
+                  ],
+                ),
               ),
             ),
-          ),),
+          ),
         ],
       ),
     );
@@ -74,9 +65,6 @@ class DashboardHomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // This looks like your old _buildDashboardContent but as a class
-    // This "seals" the build context so it doesn't rebuild 
-    // just because the Sidebar's index changed.
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -90,12 +78,12 @@ class DashboardHomeContent extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
-                    const GreetingWidget(), // Extracted greeting
+                    const SizedBox(height: 12),
+                    const GreetingWidget(), 
                     const SizedBox(height: 28),
-                    const UpcomingExamsSection(), // Extracted exams
+                    const UpcomingExamsSection(), 
                     const SizedBox(height: 28),
-                    const DailyTasksSection(), // Extracted tasks
+                    const DailyTasksSection(), 
                   ],
                 ),
               ),
@@ -106,6 +94,7 @@ class DashboardHomeContent extends StatelessWidget {
     );
   }
 }
+
 class GreetingWidget extends StatefulWidget {
   const GreetingWidget({super.key});
 
@@ -165,45 +154,45 @@ class UpcomingExamsSection extends StatelessWidget {
         .collection('revisionPlans')
         .where('userId', isEqualTo: user.uid)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
-              .toList(),
-        );
-  }
-@override
+        .map((snapshot) => snapshot.docs
+            .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+            .toList());
+    }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 1,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
-                  const SizedBox(width: 8),
-                  const Text('Upcoming Exams', 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black)),
-                  const Text(' *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _revisionPlansStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final today = DateTime.now();
-                  final startToday = DateTime(today.year, today.month, today.day);
-                  final plans = (snapshot.data ?? [])
-                      .where((p) => _examDateFromPlan(p) != null)
-                      .toList()
-                    ..sort((a, b) => _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch, 
+        children: [
+          Expanded(
+            flex: 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
+                    const SizedBox(width: 8),
+                    const Text('Upcoming Exams', 
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black)),
+                    const Text(' *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _revisionPlansStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final today = DateTime.now();
+                      final startToday = DateTime(today.year, today.month, today.day);
+                      final plans = (snapshot.data ?? [])
+                          .where((p) => _examDateFromPlan(p) != null)
+                          .toList()
+                        ..sort((a, b) => _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
 
                   final upcoming = plans.where((p) => !_examDateFromPlan(p)!.isBefore(startToday)).take(2).toList();
 
@@ -215,28 +204,36 @@ class UpcomingExamsSection extends StatelessWidget {
                     );
                   }
 
-                  return Column(
-                    children: List.generate(upcoming.length, (index) {
-                      final plan = upcoming[index];
-                      final examDate = _examDateFromPlan(plan)!;
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
-                        child: _ExamCardWidget( // Use a small helper widget below
-                          title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                          date: '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
-                          color: index.isEven ? const Color(0xFFFFF3CD) : const Color(0xFFFFE4CC),
-                        ),
+                      return Column(
+                        children: List.generate(upcoming.length, (index) {
+                          final plan = upcoming[index];
+                          final examDate = _examDateFromPlan(plan)!;
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
+                            child: _ExamCardWidget(
+                              title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
+                              date: '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                              color: index.isEven ? const Color(0xFFFFF3CD) : const Color(0xFFFFE4CC),
+                            ),
+                          );
+                        }),
                       );
-                    }),
-                  );
-                },
-              ),
-            ],
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 24),
-        const Expanded(flex: 1, child: QuoteCardWidget()), // Extracted this too for speed
-      ],
+          const SizedBox(width: 24),
+          const Expanded(
+            flex: 1, 
+            child: Padding(
+              padding: EdgeInsets.only(top: 34), 
+              child: QuoteCardWidget(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -250,7 +247,7 @@ class _ExamCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), 
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -262,13 +259,14 @@ class _ExamCardWidget extends StatelessWidget {
     );
   }
 }
+
 class QuoteCardWidget extends StatelessWidget {
   const QuoteCardWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
         borderRadius: BorderRadius.circular(12),
@@ -279,7 +277,7 @@ class QuoteCardWidget extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('"', style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
+              const Text('"', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 8, left: 8),
@@ -289,7 +287,11 @@ class QuoteCardWidget extends StatelessWidget {
               ),
             ],
           ),
-          Positioned(right: 0, bottom: -8, child: Icon(Icons.psychology, size: 56, color: const Color(0xFF7C3AED).withOpacity(0.5))),
+          Positioned(
+            right: -5, 
+            bottom: -5, 
+            child: Icon(Icons.psychology, size: 40, color: const Color(0xFF7C3AED).withOpacity(0.3))
+          ),
         ],
       ),
     );
@@ -327,6 +329,15 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     _weekDates = List.generate(7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
+  bool _isDateBeforeToday(String dateKey) {
+    final d = DateTime.tryParse(dateKey);
+    if (d == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final day = DateTime(d.year, d.month, d.day);
+    return day.isBefore(today);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedDate = _weekDates[_selectedDayIndex];
@@ -349,20 +360,11 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         const SizedBox(height: 20),
         _buildDaysBar(),
         const SizedBox(height: 12),
-        _buildOverdueInfoBar(dateKey),
+        _buildOverdueInfoBar(dateKey), // ADDED FROM TEAMMATE
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
     );
-  }
-
-  bool _isDateBeforeToday(String dateKey) {
-    final d = DateTime.tryParse(dateKey);
-    if (d == null) return false;
-    final n = DateTime.now();
-    final today = DateTime(n.year, n.month, n.day);
-    final day = DateTime(d.year, d.month, d.day);
-    return day.isBefore(today);
   }
 
   Widget _buildOverdueInfoBar(String dateKey) {
@@ -375,39 +377,23 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox.shrink();
-        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
 
         int overdueOnSelectedDay = 0;
         int totalOverdue = 0;
 
         for (final doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final rawDailyTasks = data['dailyTasks'];
-          List<dynamic> daysList = [];
-
-          if (rawDailyTasks is String) {
-            try {
-              daysList = jsonDecode(rawDailyTasks) as List<dynamic>;
-            } catch (_) {
-              daysList = [];
-            }
-          } else if (rawDailyTasks is List) {
-            daysList = rawDailyTasks;
-          }
+          final List<dynamic> daysList = jsonDecode(data['dailyTasks'] as String? ?? '[]');
 
           for (final day in daysList) {
-            if (day is! Map) continue;
             final dayDateKey = day['date']?.toString();
             if (dayDateKey == null || !_isDateBeforeToday(dayDateKey)) continue;
             final tasks = day['tasks'] as List<dynamic>? ?? [];
             for (final task in tasks) {
-              if (task is! Map) continue;
-              if (task['completed'] == true) continue;
-              totalOverdue++;
-              if (dayDateKey == dateKey) {
-                overdueOnSelectedDay++;
+              if (task['completed'] != true) {
+                totalOverdue++;
+                if (dayDateKey == dateKey) overdueOnSelectedDay++;
               }
             }
           }
@@ -425,18 +411,14 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.deepOrange.shade800),
+              Icon(Icons.warning_amber_rounded, color: Colors.deepOrange.shade800, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   overdueOnSelectedDay > 0
                       ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
                       : 'Total overdue tasks: $totalOverdue',
-                  style: TextStyle(
-                    color: Colors.deepOrange.shade900,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Colors.deepOrange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
                 ),
               ),
             ],
@@ -449,6 +431,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   Widget _buildFirestoreTasksList(String dateKey) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please sign in."));
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('revisionPlans')
@@ -457,49 +440,42 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildNoTasksPlaceholder("No revision plans found.");
-        
+
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final folderName = data['folderName'] ?? 'Unknown Course';
-          final rawDailyTasks = data['dailyTasks'];
-          List<dynamic> daysList = [];
-          
           try {
-            if (rawDailyTasks is String) {
-              daysList = jsonDecode(rawDailyTasks) as List<dynamic>;
-            } else if (rawDailyTasks is List) {
-              daysList = rawDailyTasks;
-            }
-            
-            // Find the day matching our selected date
-            final dayData = daysList.firstWhere(
-              (day) => day['date'] == dateKey,
-              orElse: () => null,
-            );
-
+            final List<dynamic> daysList = jsonDecode(data['dailyTasks'] as String? ?? '[]');
+            final dayData = daysList.firstWhere((day) => day['date'] == dateKey, orElse: () => null);
             if (dayData != null && dayData['tasks'] != null) {
-              final tasks = dayData['tasks'] as List<dynamic>;
-              for (var task in tasks) {
-                dailyTaskWidgets.add(
-                  _buildTaskCard(
-                    title: task['title'] ?? 'Revision Task',
-                    folder: folderName,
-                    isCompleted: task['completed'] ?? false,
-                    isOverdue: _isDateBeforeToday(dateKey) && (task['completed'] != true),
-                    taskId: task['taskId'],
-                    docId: doc.id,
-                    fullDailyTasks: daysList,
-                    dateKey: dateKey,
-                  ),
-                );
+              for (var task in dayData['tasks']) {
+                dailyTaskWidgets.add(_buildTaskCard(
+                  title: task['title'],
+                  folder: data['folderName'] ?? 'Course',
+                  isCompleted: task['completed'] ?? false,
+                  isOverdue: _isDateBeforeToday(dateKey) && (task['completed'] != true), // ADDED LOGIC
+                  taskId: task['taskId'],
+                  docId: doc.id,
+                  fullDailyTasks: daysList,
+                  dateKey: dateKey,
+                ));
               }
             }
           } catch (_) {}
         }
-        return dailyTaskWidgets.isEmpty 
-            ? _buildNoTasksPlaceholder("Relax! No tasks for today.") 
-            : Wrap(spacing: 16, runSpacing: 16, children: dailyTaskWidgets);
+
+        if (dailyTaskWidgets.isEmpty) return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final double itemWidth = (constraints.maxWidth - 16) / 2; 
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: dailyTaskWidgets.map((widget) => SizedBox(width: itemWidth, child: widget)).toList(),
+            );
+          },
+        );
       },
     );
   }
@@ -508,27 +484,23 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     required String title,
     required String folder,
     required bool isCompleted,
-    required bool isOverdue,
+    required bool isOverdue, // ADDED PARAM
     required String taskId,
     required String docId,
     required List fullDailyTasks,
     required String dateKey,
   }) {
     return Container(
-      width: (MediaQuery.of(context).size.width - 400) / 2,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted
-              ? Colors.transparent
-              : isOverdue
-                  ? Colors.deepOrange.shade300
-                  : const Color(0xFFE8E8E8),
+          color: isCompleted 
+            ? Colors.green.shade100 
+            : (isOverdue ? Colors.deepOrange.shade300 : const Color(0xFFE8E8E8)),
           width: isOverdue && !isCompleted ? 1.5 : 1,
         ),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -553,31 +525,27 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, 
+                Text(
+                  title,
                   style: TextStyle(
-                    fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: isCompleted
-                        ? Colors.black54
-                        : isOverdue
-                            ? Colors.deepOrange.shade900
-                            : Colors.black87,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                    color: isCompleted 
+                        ? Colors.green.shade700 
+                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
                   ),
-                  maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Text("$folder ",
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                ),
+                Text(
+                  folder,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isCompleted ? Colors.green.shade400 : Colors.grey,
+                  ),
+                ),
                 if (isOverdue && !isCompleted) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Overdue',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.deepOrange.shade800,
-                    ),
-                  ),
-                ],
+                  const SizedBox(height: 4),
+                  Text('Overdue', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange.shade800)),
+                ]
               ],
             ),
           ),
@@ -598,18 +566,23 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     return Row(
       children: [
         IconButton(
-          onPressed: () => setState(() {
-            _weekDates = _weekDates
-                .map((d) => d.subtract(const Duration(days: 7)))
-                .toList();
-          }),
+          onPressed: () {
+            setState(() {
+              _currentWeekMonday = _currentWeekMonday.subtract(const Duration(days: 7));
+              _generateWeekDates();
+              _selectedDayIndex = 0;
+            });
+          },
           icon: const Icon(Icons.chevron_left),
         ),
         IconButton(
-          onPressed: () => setState(() {
-            _weekDates =
-                _weekDates.map((d) => d.add(const Duration(days: 7))).toList();
-          }),
+          onPressed: () {
+            setState(() {
+              _currentWeekMonday = _currentWeekMonday.add(const Duration(days: 7));
+              _generateWeekDates();
+              _selectedDayIndex = 0;
+            });
+          },
           icon: const Icon(Icons.chevron_right),
         ),
       ],
@@ -617,104 +590,38 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   }
 
   Widget _buildDaysBar() {
-    const double horizontalGap = 12.0;
-    const double cardHeight = 80.0;
-
     return Row(
       children: List.generate(_weekDates.length, (index) {
         final date = _weekDates[index];
         final isSelected = index == _selectedDayIndex;
-
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: index < 6 ? horizontalGap : 0),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => setState(() => _selectedDayIndex = index),
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  clipBehavior: Clip.none,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              onTap: () => setState(() => _selectedDayIndex = index),
+              child: Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF9333EA) : Colors.grey[300]!,
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: double.infinity,
-                      height: cardHeight,
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF9333EA)
-                              : Colors.grey[300]!,
-                          width: isSelected ? 2.0 : 1.0,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: const Color(0xFF9333EA)
-                                      .withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                )
-                              ]
-                            : [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            DateFormat('EEEE').format(date).substring(0, 3),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.w600,
-                              color: isSelected
-                                  ? const Color(0xFF7C3AED)
-                                  : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            DateFormat('d').format(date),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: isSelected
-                                  ? FontWeight.w800
-                                  : FontWeight.w500,
-                              color: isSelected
-                                  ? const Color(0xFF7C3AED)
-                                  : Colors.grey[700],
-                            ),
-                          ),
-                          Text(
-                            DateFormat('MMM').format(date),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: isSelected
-                                  ? const Color(0xFF9333EA).withOpacity(0.7)
-                                  : Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    Text(DateFormat('E').format(date), style: TextStyle(color: isSelected ? const Color(0xFF7C3AED) : Colors.black87, fontWeight: FontWeight.bold)),
+                    Text(DateFormat('d').format(date), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
-            ),
-          ),
+            
+          ),),
         );
-      }),
-    );
+      },
+    ));
   }
 }
 
@@ -743,10 +650,7 @@ class NotificationsPage extends StatelessWidget {
           children: [
             Icon(Icons.notifications_none_outlined, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text(
-              'No notifications yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey[500]),
-            ),
+            Text('No notifications yet', style: TextStyle(fontSize: 18, color: Colors.grey[500])),
           ],
         ),
       ),

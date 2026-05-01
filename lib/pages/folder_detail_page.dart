@@ -149,10 +149,10 @@ Expanded(
       return GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 2.3,
+          crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 3,
+          crossAxisSpacing: 20,
+          mainAxisSpacing: 20,
+          childAspectRatio: 1.3,
         ),
         itemCount: files.length,
         itemBuilder: (context, index) {
@@ -308,6 +308,17 @@ Widget _buildFileCard(FolderFile file) {
             duration: Duration(seconds: 3),
           ),
         );
+        return;
+      }
+
+      final existingFiles = await _fileService.getFiles(widget.folder.id).first;
+      final normalizedPickedName = _normalizeFileName(pickedFile.name);
+      final isDuplicate = existingFiles.any(
+        (file) => _normalizeFileName(file.fileName) == normalizedPickedName,
+      );
+
+      if (isDuplicate) {
+        _showDuplicateFileDialog(pickedFile.name);
         return;
       }
 
@@ -555,6 +566,24 @@ Widget _buildFileCard(FolderFile file) {
     );
   }
 
+  void _showDuplicateFileDialog(String fileName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('File already exists'),
+        content: Text(
+          '"$fileName" already exists in this course folder.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -574,6 +603,10 @@ Widget _buildFileCard(FolderFile file) {
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
+  }
+
+  String _normalizeFileName(String fileName) {
+    return fileName.trim().toLowerCase();
   }
 }
 

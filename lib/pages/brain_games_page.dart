@@ -24,8 +24,6 @@ class BrainGamesPage extends StatelessWidget {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // 1. REPLACED _buildTopBar() with the Global Header
-          const AppHeader(title: 'Brain Games'),
 
           Expanded(
             child: Stack(
@@ -35,7 +33,6 @@ class BrainGamesPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 2. REMOVED the local Text('Brain Games') since it's now in the header
                       _buildGameCards(context),
                       const SizedBox(height: 200),
                     ],

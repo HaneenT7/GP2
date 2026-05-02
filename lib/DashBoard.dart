@@ -21,37 +21,105 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
-  
+
+  // Same order as IndexedStack children
+  static const _pageTitles = [
+    'Dashboard',
+    'Course Folder',
+    'Revision Plan',
+    'Quiz',
+    'Snaps Board',
+    'Brain Games',
+    'Profile',
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F2F8), // off-white lavender base
       body: Row(
         children: [
           CustomSidebar(
             selectedIndex: _selectedIndex,
-            onItemSelected: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
+            onItemSelected: (index) => setState(() => _selectedIndex = index),
           ),
           Expanded(
-            child: RepaintBoundary( 
-              child: Container(
-                color: Colors.white,
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: const [
-                    DashboardHomeContent(), // Index 0
-                    RevPlanPage(),          // Index 1
-                    SnapsBoardPage(),       // Index 2
-                    CourseFoldersPage(),    // Index 3
-                    BrainGamesPage(),       // Index 4
-                    QuizLandingPage(),      // Index 5
-                    ProfilePage(),          // Index 6
-                  ],
-                ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Transparent topbar — part of the frame layer
+                  _buildTopBar(),
+                  const SizedBox(height: 16),
+                  // The floating white island
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF553C76).withOpacity(0.08),
+                            blurRadius: 24,
+                            offset: const Offset(0, 2),
+                          ),
+                          BoxShadow(
+                            color: const Color(0xFF553C76).withOpacity(0.05),
+                            blurRadius: 0,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: RepaintBoundary(
+                          child: IndexedStack(
+                            index: _selectedIndex,
+                            children: const [
+                              DashboardHomeContent(), 
+                              CourseFoldersPage(),    
+                              RevPlanPage(),          
+                              QuizLandingPage(),      
+                              SnapsBoardPage(),       
+                              BrainGamesPage(),       
+                              ProfilePage(),          
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            _pageTitles[_selectedIndex], // ← dynamic title
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF2D1F3D),
+              letterSpacing: -0.3,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            color: const Color(0xFF553C76),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationsPage()),
             ),
           ),
         ],
@@ -65,35 +133,25 @@ class DashboardHomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const AppHeader(title: 'Dashboard'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    const GreetingWidget(), 
-                    const SizedBox(height: 28),
-                    const UpcomingExamsSection(), 
-                    const SizedBox(height: 28),
-                    const DailyTasksSection(), 
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const GreetingWidget(),
+            const SizedBox(height: 28),
+            const UpcomingExamsSection(),
+            const SizedBox(height: 28),
+            const DailyTasksSection(),
+          ],
+        ),
+      ),
     );
   }
 }
+
 
 class GreetingWidget extends StatefulWidget {
   const GreetingWidget({super.key});

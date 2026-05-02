@@ -114,7 +114,6 @@ void _showToast(String folderName) {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          const AppHeader(title: 'Revision plans'),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(

@@ -5,13 +5,18 @@ import 'package:file_picker/file_picker.dart';
 import '../models/course_folder.dart';
 import '../models/folder_file.dart';
 import '../services/file_service.dart';
-import 'pdf_viewer_page.dart';
 import '../services/folder_service.dart';
+import 'pdf_viewer_page.dart';
 
 class FolderDetailPage extends StatefulWidget {
   final CourseFolder folder;
+  final VoidCallback onBack; // ← replaces Navigator.pop
 
-  const FolderDetailPage({super.key, required this.folder});
+  const FolderDetailPage({
+    super.key,
+    required this.folder,
+    required this.onBack,
+  });
 
   @override
   State<FolderDetailPage> createState() => _FolderDetailPageState();
@@ -20,126 +25,171 @@ class FolderDetailPage extends StatefulWidget {
 class _FolderDetailPageState extends State<FolderDetailPage> {
   final FileService _fileService = FileService();
   final FolderService _folderService = FolderService();
-
   bool _isUploading = false;
 
   @override
   Widget build(BuildContext context) {
     final folderColor = Color(int.parse(widget.folder.color.replaceFirst('#', '0xFF')));
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          // Folder header
-          Container(
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              children: [
-                Container(
-                  width: 80,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: folderColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: folderColor.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.folder,
-                    size: 40,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.folder.name,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      StreamBuilder<List<FolderFile>>(
-                        stream: _fileService.getFiles(widget.folder.id),
-                        builder: (context, snapshot) {
-                          final fileCount = snapshot.data?.length ?? 0;
-                          return Text(
-                            '$fileCount ${fileCount == 1 ? 'file' : 'files'}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          // Files list
-          // Files grid
-Expanded(
-  child: StreamBuilder<List<FolderFile>>(
-    stream: _fileService.getFiles(widget.folder.id),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const Center(child: CircularProgressIndicator());
-      }
-
-      if (snapshot.hasError) {
-        return Center(
-          child: Text('Error: ${snapshot.error}'),
-        );
-      }
-
-      final files = snapshot.data ?? [];
-
-      if (files.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      children: [
+        // ── Back header (replaces AppBar) ──────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 12, 24, 8),
+          child: Row(
             children: [
-              Icon(
-                Icons.description_outlined,
-                size: 64,
-                color: Colors.grey[400],
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                color: const Color(0xFF553C76),
+                onPressed: widget.onBack, // ← calls parent setState
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No files yet',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.grey[600],
+              Container(
+                width: 44, height: 40,
+                decoration: BoxDecoration(
+                  color: folderColor,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(color: folderColor.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 3)),
+                  ],
                 ),
+                child: const Icon(Icons.folder, size: 24, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.folder.name,
+                      style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1a0a2e),
+                      ),
+                    ),
+                    StreamBuilder<List<FolderFile>>(
+                      stream: _fileService.getFiles(widget.folder.id),
+                      builder: (context, snapshot) {
+                        final count = snapshot.data?.length ?? 0;
+                        return Text(
+                          '$count ${count == 1 ? 'file' : 'files'}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              // Upload button in header
+              ElevatedButton.icon(
+                onPressed: _isUploading ? null : _uploadFile,
+                icon: _isUploading
+                    ? const SizedBox(
+                        width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.upload_file, color: Colors.white, size: 18),
+                label: const Text('Upload', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B46C1),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // ── Files grid ─────────────────────────────────────────────────
+        Expanded(
+          child: StreamBuilder<List<FolderFile>>(
+            stream: _fileService.getFiles(widget.folder.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              final files = snapshot.data ?? [];
+              if (files.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.description_outlined, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text('No files yet', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+                      const SizedBox(height: 8),
+                      Text('Click Upload to add PDF files', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+                    ],
+                  ),
+                );
+              }
+
+              return GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 2.3,
+                ),
+                itemCount: files.length,
+                itemBuilder: (context, index) => _buildFileCard(files[index]),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFileCard(FolderFile file) {
+    final fileNameWithoutExt = file.fileName.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () => _openFile(file),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 28),
               ),
               const SizedBox(height: 8),
               Text(
-                'Click the upload button to add PDF files',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
-                ),
+                fileNameWithoutExt,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatFileSize(file.fileSize), style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  PopupMenuButton(
+                    icon: const Icon(Icons.more_vert, size: 18),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'open', child: Text('Open')),
+                      const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+                    ],
+                    onSelected: (value) {
+                      if (value == 'open') _openFile(file);
+                      if (value == 'delete') _deleteFile(file);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -154,159 +204,26 @@ Expanded(
           mainAxisSpacing: 20,
           childAspectRatio: 1.3,
         ),
-        itemCount: files.length,
-        itemBuilder: (context, index) {
-          return _buildFileCard(files[index]);
-        },
-      );
-    },
-  ),
-),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isUploading ? null : _uploadFile,
-        backgroundColor: const Color(0xFF6B46C1),
-        child: _isUploading
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : const Icon(Icons.upload_file, color: Colors.white),
       ),
     );
   }
 
-Widget _buildFileCard(FolderFile file) {
-  final fileNameWithoutExt =
-      file.fileName.replaceAll('.pdf', '').replaceAll('.PDF', '');
-
-  return Card(
-    elevation: 2,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: InkWell(
-      onTap: () => _openFile(file),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    // PDF icon
-    Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.red[50],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Icon(
-        Icons.picture_as_pdf,
-        color: Colors.red,
-        size: 28,
-      ),
-    ),
-
-    const SizedBox(height: 8),
-
-    // File name
-    Text(
-      fileNameWithoutExt,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-    ),
-
-    const SizedBox(height: 6),
-
-    // Bottom row
-    Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          _formatFileSize(file.fileSize),
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey[600],
-          ),
-        ),
-        PopupMenuButton(
-          icon: const Icon(Icons.more_vert, size: 18),
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'open', child: Text('Open')),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-          onSelected: (value) {
-            if (value == 'open') _openFile(file);
-            if (value == 'delete') _deleteFile(file);
-          },
-        ),
-      ],
-    ),
-  ],
-)
-      ),
-    ),
-  );
-}
+  void _openFile(FolderFile file) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfViewerPage(file: file)));
+  }
 
   Future<void> _uploadFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Use FileType.any to allow navigation to all folders
-        allowMultiple: false,
-        withData: kIsWeb,
-        withReadStream: false,
-        dialogTitle: 'Select a PDF file',
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any, allowMultiple: false,
+        withData: kIsWeb, dialogTitle: 'Select a PDF file',
       );
-
-      if (result == null) {
-        // User cancelled file picker
-        return;
-      }
-
-      if (result.files.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No file selected'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
+      if (result == null || result.files.isEmpty) return;
 
       final pickedFile = result.files.single;
-      
-      if (pickedFile.name.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid file selected'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // Check if file is PDF (since we're using FileType.any)
       if (!pickedFile.name.toLowerCase().endsWith('.pdf')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select a PDF file (.pdf extension)'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 3),
-          ),
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a PDF file'), backgroundColor: Colors.orange),
         );
         return;
       }
@@ -326,88 +243,38 @@ Widget _buildFileCard(FolderFile file) {
         _isUploading = true;
       });
 
-      final fileName = pickedFile.name;
       dynamic fileData;
       int fileSize;
 
       if (kIsWeb) {
-        // Web: use bytes
-        if (pickedFile.bytes == null) {
-          throw Exception('File data is null');
-        }
-        fileData = pickedFile.bytes;
+        fileData = pickedFile.bytes ?? (throw Exception('File data is null'));
         fileSize = pickedFile.size;
       } else {
-        // Mobile/Emulator: use file path or bytes
         if (pickedFile.path != null && pickedFile.path!.isNotEmpty) {
-          // Try to use file path first
-          final file = File(pickedFile.path!);
-          if (await file.exists()) {
-            fileData = file;
-            fileSize = await file.length();
-          } else if (pickedFile.bytes != null && pickedFile.size > 0) {
-            // Fallback to bytes if file doesn't exist
+          final f = File(pickedFile.path!);
+          if (await f.exists()) {
+            fileData = f;
+            fileSize = await f.length();
+          } else {
             fileData = pickedFile.bytes;
             fileSize = pickedFile.size;
-          } else {
-            throw Exception('File not found. Please try selecting the file again.');
           }
-        } else if (pickedFile.bytes != null && pickedFile.size > 0) {
-          // Use bytes if path is not available
+        } else {
           fileData = pickedFile.bytes;
           fileSize = pickedFile.size;
-        } else {
-          throw Exception('Unable to access file. Please ensure you have storage permissions and try again.');
         }
       }
 
-      try {
-        await _fileService.uploadFile(widget.folder.id, fileData, fileName, fileSize);
-        await _folderService.touchFolder(widget.folder.id); 
-        if (mounted) {
-          _showUploadSuccessDialog();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error uploading file: $e'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isUploading = false;
-          });
-        }
-      }
+      await _fileService.uploadFile(widget.folder.id, fileData, pickedFile.name, fileSize);
+      await _folderService.touchFolder(widget.folder.id);
+      if (mounted) _showSuccessDialog('File Uploaded', 'The file is uploaded successfully');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error selecting file: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        setState(() {
-          _isUploading = false;
-        });
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
-  }
-
-  void _openFile(FolderFile file) {
-    // Navigate to PDF viewer page within the app
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PdfViewerPage(file: file),
-      ),
-    );
   }
 
   Future<void> _deleteFile(FolderFile file) async {
@@ -417,15 +284,10 @@ Widget _buildFileCard(FolderFile file) {
         title: const Text('Delete File'),
         content: Text('Are you sure you want to delete "${file.fileName}"?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -435,26 +297,17 @@ Widget _buildFileCard(FolderFile file) {
     if (confirmed == true) {
       try {
         await _fileService.deleteFile(file);
-        await _folderService.touchFolder(widget.folder.id); 
-        if (mounted) {
-          Navigator.pop(context); // Close delete confirmation dialog
-          _showDeleteSuccessDialog();
-        }
+        await _folderService.touchFolder(widget.folder.id);
+        if (mounted) _showSuccessDialog('File Deleted', 'The file is deleted successfully');
       } catch (e) {
-        if (mounted) {
-          Navigator.pop(context); // Close delete confirmation dialog
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error deleting file: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting file: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }
 
-  void _showUploadSuccessDialog() {
+  void _showSuccessDialog(String title, String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -463,102 +316,22 @@ Widget _buildFileCard(FolderFile file) {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2196F3),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check,
-                color: Colors.white,
-                size: 40,
-              ),
+              width: 60, height: 60,
+              decoration: const BoxDecoration(color: Color(0xFF2196F3), shape: BoxShape.circle),
+              child: const Icon(Icons.check, color: Colors.white, size: 40),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'File Uploaded',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2196F3),
-              ),
-            ),
+            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
             const SizedBox(height: 8),
-            const Text(
-              'The file is uploaded successfully',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14),
-            ),
+            Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6B46C1),
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
               ),
-              child: const Text(
-                'OK',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2196F3),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check,
-                color: Colors.white,
-                size: 40,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'File Deleted',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2196F3),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'The file is deleted successfully',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6B46C1),
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
-              ),
-              child: const Text(
-                'OK',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('OK', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),

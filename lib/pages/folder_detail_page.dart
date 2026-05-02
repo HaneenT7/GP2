@@ -193,6 +193,16 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
               ),
             ],
           ),
+        );
+      }
+
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 3,
+          crossAxisSpacing: 20,
+          mainAxisSpacing: 20,
+          childAspectRatio: 1.3,
         ),
       ),
     );
@@ -218,7 +228,20 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
         return;
       }
 
-      setState(() => _isUploading = true);
+      final existingFiles = await _fileService.getFiles(widget.folder.id).first;
+      final normalizedPickedName = _normalizeFileName(pickedFile.name);
+      final isDuplicate = existingFiles.any(
+        (file) => _normalizeFileName(file.fileName) == normalizedPickedName,
+      );
+
+      if (isDuplicate) {
+        _showDuplicateFileDialog(pickedFile.name);
+        return;
+      }
+
+      setState(() {
+        _isUploading = true;
+      });
 
       dynamic fileData;
       int fileSize;
@@ -316,9 +339,47 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
     );
   }
 
+  void _showDuplicateFileDialog(String fileName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('File already exists'),
+        content: Text(
+          '"$fileName" already exists in this course folder.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  String _normalizeFileName(String fileName) {
+    return fileName.trim().toLowerCase();
+  }
 }
+

@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'models/course_folder.dart';
-import 'models/folder_file.dart';
-import 'services/folder_service.dart';
-import 'services/file_service.dart';
-import 'services/revision_plan_service.dart';
+import '../models/course_folder.dart';
+import '../models/folder_file.dart';
+import '../services/folder_service.dart';
+import '../services/file_service.dart';
+import '../services/revision_plan_service.dart';
 
 class SetUpRevPlan extends StatefulWidget {
   final VoidCallback onClose;

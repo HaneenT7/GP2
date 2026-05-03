@@ -3,13 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart'; 
-import 'widgets/custom_sidebar.dart';
-import 'pages/course_folders_page.dart';
+import '../widgets/custom_sidebar.dart';
+import 'course_folders_page.dart';
 import 'RevPlanPage.dart';
-import 'pages/snaps_board_page.dart';
-import 'pages/brain_games_page.dart';
-import 'pages/profile_page.dart';
-import 'pages/quiz_landing_page.dart'; 
+import 'snaps_board_page.dart';
+import 'brain_games_page.dart';
+import 'profile_page.dart';
+import 'quiz_landing_page.dart'; 
 import 'package:gp2_watad/widgets/app_header.dart';
 
 class DashBoard extends StatefulWidget {

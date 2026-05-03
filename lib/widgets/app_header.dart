@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gp2_watad/DashBoard.dart';
+import 'package:gp2_watad/pages/DashBoard.dart';
 // file no longer needed !
 class AppHeader extends StatelessWidget {
   final String title;

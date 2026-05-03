@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:gp2_watad/services/notification_service.dart';
 import 'pages/firebase_options.dart';
 import 'widgets/custom_sidebar.dart';
 import 'pages/signUp.dart';
@@ -22,9 +23,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  
-  await dotenv.load(fileName: ".env");
 
+  await dotenv.load(fileName: ".env");
+  await NotificationService.init();
   runApp(const MyApp());
 }
 
@@ -40,8 +41,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-       home: SignUpPage(),
-       //home: RevPlanPage(),
+      home: SignUpPage(),
+      //home: RevPlanPage(),
     );
   }
 }

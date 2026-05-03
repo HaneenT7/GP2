@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
 import 'course_folders_page.dart';
 import 'RevPlanPage.dart';
 import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
-import 'quiz_landing_page.dart'; 
+import 'quiz_landing_page.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
+import '../services/exam_notification_scheduler.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -21,6 +22,12 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ExamNotificationScheduler.scheduleAll();
+  }
 
   // Same order as IndexedStack children
   static const _pageTitles = [
@@ -77,13 +84,13 @@ class _DashBoardState extends State<DashBoard> {
                           child: IndexedStack(
                             index: _selectedIndex,
                             children: const [
-                              DashboardHomeContent(), 
-                              CourseFoldersPage(),    
-                              RevPlanPage(),          
-                              QuizLandingPage(),      
-                              SnapsBoardPage(),       
-                              BrainGamesPage(),       
-                              ProfilePage(),          
+                              DashboardHomeContent(),
+                              CourseFoldersPage(),
+                              RevPlanPage(),
+                              QuizLandingPage(),
+                              SnapsBoardPage(),
+                              BrainGamesPage(),
+                              ProfilePage(),
                             ],
                           ),
                         ),
@@ -152,7 +159,6 @@ class DashboardHomeContent extends StatelessWidget {
   }
 }
 
-
 class GreetingWidget extends StatefulWidget {
   const GreetingWidget({super.key});
 
@@ -172,7 +178,10 @@ class _GreetingWidgetState extends State<GreetingWidget> {
   Future<void> _loadUserName() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    final doc = await FirebaseFirestore.instance.collection('students').doc(user.uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('students')
+        .doc(user.uid)
+        .get();
     if (mounted && doc.exists) {
       setState(() => _firstName = doc.data()?['firstName'] ?? 'Guest');
     }
@@ -202,7 +211,9 @@ class UpcomingExamsSection extends StatelessWidget {
   }
 
   String _folderNameFromPlan(Map<String, dynamic> plan) {
-    return plan['folderName'] as String? ?? plan['folder_name'] as String? ?? 'Course';
+    return plan['folderName'] as String? ??
+        plan['folder_name'] as String? ??
+        'Course';
   }
 
   Stream<List<Map<String, dynamic>>> _revisionPlansStream() {
@@ -215,13 +226,13 @@ class UpcomingExamsSection extends StatelessWidget {
         .map((snapshot) => snapshot.docs
             .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
             .toList());
-    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return IntrinsicHeight(
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch, 
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             flex: 1,
@@ -230,11 +241,19 @@ class UpcomingExamsSection extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.school_outlined, size: 22, color: Colors.purple.shade300),
+                    Icon(Icons.school_outlined,
+                        size: 22, color: Colors.purple.shade300),
                     const SizedBox(width: 8),
-                    const Text('Upcoming Exams', 
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black)),
-                    const Text(' *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.red)),
+                    const Text('Upcoming Exams',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black)),
+                    const Text(' *',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -246,32 +265,48 @@ class UpcomingExamsSection extends StatelessWidget {
                         return const Center(child: CircularProgressIndicator());
                       }
                       final today = DateTime.now();
-                      final startToday = DateTime(today.year, today.month, today.day);
+                      final startToday =
+                          DateTime(today.year, today.month, today.day);
                       final plans = (snapshot.data ?? [])
                           .where((p) => _examDateFromPlan(p) != null)
                           .toList()
-                        ..sort((a, b) => _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
+                        ..sort((a, b) => _examDateFromPlan(a)!
+                            .compareTo(_examDateFromPlan(b)!));
 
-                  final upcoming = plans.where((p) => !_examDateFromPlan(p)!.isBefore(startToday)).take(2).toList();
+                      final upcoming = plans
+                          .where((p) =>
+                              !_examDateFromPlan(p)!.isBefore(startToday))
+                          .take(2)
+                          .toList();
 
-                  if (upcoming.isEmpty) {
-                    return Container(
-                      width: double.infinity, padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)),
-                      child: const Text('No upcoming exams yet.', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                    );
-                  }
+                      if (upcoming.isEmpty) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                              color: const Color(0xFFF5F5F5),
+                              borderRadius: BorderRadius.circular(12)),
+                          child: const Text('No upcoming exams yet.',
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.black54)),
+                        );
+                      }
 
                       return Column(
                         children: List.generate(upcoming.length, (index) {
                           final plan = upcoming[index];
                           final examDate = _examDateFromPlan(plan)!;
                           return Padding(
-                            padding: EdgeInsets.only(bottom: index == upcoming.length - 1 ? 0 : 12),
+                            padding: EdgeInsets.only(
+                                bottom: index == upcoming.length - 1 ? 0 : 12),
                             child: _ExamCardWidget(
-                              title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                              date: '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
-                              color: index.isEven ? const Color(0xFFFFF3CD) : const Color(0xFFFFE4CC),
+                              title:
+                                  '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
+                              date:
+                                  '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                              color: index.isEven
+                                  ? const Color(0xFFFFF3CD)
+                                  : const Color(0xFFFFE4CC),
                             ),
                           );
                         }),
@@ -284,9 +319,9 @@ class UpcomingExamsSection extends StatelessWidget {
           ),
           const SizedBox(width: 24),
           const Expanded(
-            flex: 1, 
+            flex: 1,
             child: Padding(
-              padding: EdgeInsets.only(top: 34), 
+              padding: EdgeInsets.only(top: 34),
               child: QuoteCardWidget(),
             ),
           ),
@@ -300,17 +335,23 @@ class _ExamCardWidget extends StatelessWidget {
   final String title;
   final String date;
   final Color color;
-  const _ExamCardWidget({required this.title, required this.date, required this.color});
+  const _ExamCardWidget(
+      {required this.title, required this.date, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), 
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87)),
           Text(date, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ],
       ),
@@ -326,7 +367,8 @@ class QuoteCardWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
+        gradient: const LinearGradient(
+            colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
@@ -335,21 +377,29 @@ class QuoteCardWidget extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('"', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
+              const Text('"',
+                  style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1)),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 8, left: 8),
-                  child: Text('Follow your plan, not your mood', 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade800)),
+                  child: Text('Follow your plan, not your mood',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.deepPurple.shade800)),
                 ),
               ),
             ],
           ),
           Positioned(
-            right: -5, 
-            bottom: -5, 
-            child: Icon(Icons.psychology, size: 40, color: const Color(0xFF7C3AED).withOpacity(0.3))
-          ),
+              right: -5,
+              bottom: -5,
+              child: Icon(Icons.psychology,
+                  size: 40, color: const Color(0xFF7C3AED).withOpacity(0.3))),
         ],
       ),
     );
@@ -384,7 +434,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   }
 
   void _generateWeekDates() {
-    _weekDates = List.generate(7, (index) => _currentWeekMonday.add(Duration(days: index)));
+    _weekDates = List.generate(
+        7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
   bool _isDateBeforeToday(String dateKey) {
@@ -435,14 +486,16 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const SizedBox.shrink();
 
         int overdueOnSelectedDay = 0;
         int totalOverdue = 0;
 
         for (final doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final List<dynamic> daysList = jsonDecode(data['dailyTasks'] as String? ?? '[]');
+          final List<dynamic> daysList =
+              jsonDecode(data['dailyTasks'] as String? ?? '[]');
 
           for (final day in daysList) {
             final dayDateKey = day['date']?.toString();
@@ -469,14 +522,18 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.deepOrange.shade800, size: 20),
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.deepOrange.shade800, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   overdueOnSelectedDay > 0
                       ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
                       : 'Total overdue tasks: $totalOverdue',
-                  style: TextStyle(color: Colors.deepOrange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                  style: TextStyle(
+                      color: Colors.deepOrange.shade900,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13),
                 ),
               ),
             ],
@@ -496,22 +553,27 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildNoTasksPlaceholder("No revision plans found.");
+        if (snapshot.connectionState == ConnectionState.waiting)
+          return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return _buildNoTasksPlaceholder("No revision plans found.");
 
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
           try {
-            final List<dynamic> daysList = jsonDecode(data['dailyTasks'] as String? ?? '[]');
-            final dayData = daysList.firstWhere((day) => day['date'] == dateKey, orElse: () => null);
+            final List<dynamic> daysList =
+                jsonDecode(data['dailyTasks'] as String? ?? '[]');
+            final dayData = daysList.firstWhere((day) => day['date'] == dateKey,
+                orElse: () => null);
             if (dayData != null && dayData['tasks'] != null) {
               for (var task in dayData['tasks']) {
                 dailyTaskWidgets.add(_buildTaskCard(
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
                   isCompleted: task['completed'] ?? false,
-                  isOverdue: _isDateBeforeToday(dateKey) && (task['completed'] != true), // ADDED LOGIC
+                  isOverdue: _isDateBeforeToday(dateKey) &&
+                      (task['completed'] != true), // ADDED LOGIC
                   taskId: task['taskId'],
                   docId: doc.id,
                   fullDailyTasks: daysList,
@@ -522,15 +584,18 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty) return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+        if (dailyTaskWidgets.isEmpty)
+          return _buildNoTasksPlaceholder("Relax! No tasks for today.");
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final double itemWidth = (constraints.maxWidth - 16) / 2; 
+            final double itemWidth = (constraints.maxWidth - 16) / 2;
             return Wrap(
               spacing: 16,
               runSpacing: 16,
-              children: dailyTaskWidgets.map((widget) => SizedBox(width: itemWidth, child: widget)).toList(),
+              children: dailyTaskWidgets
+                  .map((widget) => SizedBox(width: itemWidth, child: widget))
+                  .toList(),
             );
           },
         );
@@ -554,9 +619,11 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted 
-            ? Colors.green.shade100 
-            : (isOverdue ? Colors.deepOrange.shade300 : const Color(0xFFE8E8E8)),
+          color: isCompleted
+              ? Colors.green.shade100
+              : (isOverdue
+                  ? Colors.deepOrange.shade300
+                  : const Color(0xFFE8E8E8)),
           width: isOverdue && !isCompleted ? 1.5 : 1,
         ),
       ),
@@ -567,11 +634,15 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
               for (var day in fullDailyTasks) {
                 if (day['date'] == dateKey) {
                   for (var t in day['tasks']) {
-                    if (t['taskId'] == taskId) t['completed'] = !(t['completed'] ?? false);
+                    if (t['taskId'] == taskId)
+                      t['completed'] = !(t['completed'] ?? false);
                   }
                 }
               }
-              await FirebaseFirestore.instance.collection('revisionPlans').doc(docId).update({'dailyTasks': jsonEncode(fullDailyTasks)});
+              await FirebaseFirestore.instance
+                  .collection('revisionPlans')
+                  .doc(docId)
+                  .update({'dailyTasks': jsonEncode(fullDailyTasks)});
             },
             child: Icon(
               isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
@@ -588,9 +659,11 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     decoration: isCompleted ? TextDecoration.lineThrough : null,
-                    color: isCompleted 
-                        ? Colors.green.shade700 
-                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
+                    color: isCompleted
+                        ? Colors.green.shade700
+                        : (isOverdue
+                            ? Colors.deepOrange.shade900
+                            : Colors.black87),
                   ),
                 ),
                 Text(
@@ -602,7 +675,11 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                 ),
                 if (isOverdue && !isCompleted) ...[
                   const SizedBox(height: 4),
-                  Text('Overdue', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange.shade800)),
+                  Text('Overdue',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepOrange.shade800)),
                 ]
               ],
             ),
@@ -616,7 +693,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Center(child: Text(message, style: const TextStyle(color: Colors.grey))),
+      child: Center(
+          child: Text(message, style: const TextStyle(color: Colors.grey))),
     );
   }
 
@@ -626,7 +704,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         IconButton(
           onPressed: () {
             setState(() {
-              _currentWeekMonday = _currentWeekMonday.subtract(const Duration(days: 7));
+              _currentWeekMonday =
+                  _currentWeekMonday.subtract(const Duration(days: 7));
               _generateWeekDates();
               _selectedDayIndex = 0;
             });
@@ -636,7 +715,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         IconButton(
           onPressed: () {
             setState(() {
-              _currentWeekMonday = _currentWeekMonday.add(const Duration(days: 7));
+              _currentWeekMonday =
+                  _currentWeekMonday.add(const Duration(days: 7));
               _generateWeekDates();
               _selectedDayIndex = 0;
             });
@@ -649,7 +729,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
 
   Widget _buildDaysBar() {
     return Row(
-      children: List.generate(_weekDates.length, (index) {
+        children: List.generate(
+      _weekDates.length,
+      (index) {
         final date = _weekDates[index];
         final isSelected = index == _selectedDayIndex;
         return Expanded(
@@ -663,20 +745,29 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isSelected ? const Color(0xFF9333EA) : Colors.grey[300]!,
+                    color: isSelected
+                        ? const Color(0xFF9333EA)
+                        : Colors.grey[300]!,
                     width: isSelected ? 2 : 1,
                   ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(DateFormat('E').format(date), style: TextStyle(color: isSelected ? const Color(0xFF7C3AED) : Colors.black87, fontWeight: FontWeight.bold)),
-                    Text(DateFormat('d').format(date), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(DateFormat('E').format(date),
+                        style: TextStyle(
+                            color: isSelected
+                                ? const Color(0xFF7C3AED)
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold)),
+                    Text(DateFormat('d').format(date),
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
-            
-          ),),
+            ),
+          ),
         );
       },
     ));
@@ -706,9 +797,11 @@ class NotificationsPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.notifications_none_outlined, size: 64, color: Colors.grey[300]),
+            Icon(Icons.notifications_none_outlined,
+                size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text('No notifications yet', style: TextStyle(fontSize: 18, color: Colors.grey[500])),
+            Text('No notifications yet',
+                style: TextStyle(fontSize: 18, color: Colors.grey[500])),
           ],
         ),
       ),

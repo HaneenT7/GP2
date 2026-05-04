@@ -12,11 +12,10 @@ class CustomSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const sidebarWidth = 174.0;
-    const backgroundColor = Color(0xFFBFDFFF);
-    const sidebarRadius = Radius.circular(32);
+    const sidebarWidth = 88.0; // Smaller than before (was 174)
+    const backgroundColor = Color(0xFF553C76); // Deep purple
+    const sidebarRadius = Radius.circular(0);
 
-    // RepaintBoundary isolates the sidebar from the rest of the dashboard
     return RepaintBoundary(
       child: Container(
         width: sidebarWidth,
@@ -29,7 +28,7 @@ class CustomSidebar extends StatelessWidget {
         ),
         child: Column(
           children: [
-            const SidebarLogo(), // Extracted to prevent image reload jank
+            const SidebarLogo(),
 
             const SizedBox(height: 4),
 
@@ -54,23 +53,25 @@ class CustomSidebar extends StatelessWidget {
 
   Widget _buildNavItem(IconData icon, int index, String tooltip) {
     final isSelected = selectedIndex == index;
-    
+
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 50), // Shorter duration avoids blocking tap logic
+      waitDuration: const Duration(milliseconds: 50),
       child: GestureDetector(
         onTap: () => onItemSelected(index),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF3EC4D9) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected
+                ? Colors.white.withOpacity(0.2) // Soft white highlight
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             icon,
-            color: Colors.white,
-            size: 26,
+            color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+            size: 24,
           ),
         ),
       ),
@@ -79,66 +80,81 @@ class CustomSidebar extends StatelessWidget {
 
   Widget _buildSlantedNavItem(IconData icon, int index, String tooltip) {
     final isSelected = selectedIndex == index;
-    
+
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 50),
       child: GestureDetector(
         onTap: () => onItemSelected(index),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF3EC4D9) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected
+                ? Colors.white.withOpacity(0.2)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Transform.rotate(
             angle: 0.9,
-            child: Icon(icon, color: Colors.white, size: 26),
+            child: Icon(
+              icon,
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+              size: 24,
+            ),
           ),
         ),
       ),
     );
   }
 
-Widget _buildPenAndBookNavItem(int index, String tooltip) {
-  final isSelected = selectedIndex == index;
-  
-  return Tooltip(
-    message: tooltip,
-    waitDuration: const Duration(milliseconds: 50),
-    child: GestureDetector(
-      onTap: () => onItemSelected(index),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF3EC4D9) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        // REMOVED 'const' from here because Transform.rotate is dynamic
-        child: SizedBox(
-          width: 26,
-          height: 26,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(Icons.menu_book, color: Colors.white, size: 22),
-              Positioned(
-                right: -2,
-                top: -4,
-                child: Transform.rotate(
-                  angle: -0.4,
-                  child: const Icon(Icons.edit, color: Colors.white, size: 15),
+  Widget _buildPenAndBookNavItem(int index, String tooltip) {
+    final isSelected = selectedIndex == index;
+
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 50),
+      child: GestureDetector(
+        onTap: () => onItemSelected(index),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white.withOpacity(0.2)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(Icons.menu_book,
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withOpacity(0.6),
+                    size: 20),
+                Positioned(
+                  right: -2,
+                  top: -4,
+                  child: Transform.rotate(
+                    angle: -0.4,
+                    child: Icon(Icons.edit,
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6),
+                        size: 13),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 class SidebarLogo extends StatelessWidget {
@@ -147,15 +163,15 @@ class SidebarLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+      padding: EdgeInsets.fromLTRB(4, 8, 4, 8),
       child: SizedBox(
-        width: 173,
-        height: 148,
+        width: 64,  // Tighter logo for narrow sidebar
+        height: 64,
         child: FittedBox(
           fit: BoxFit.contain,
           child: Image(
             image: AssetImage('assets/images/watad_logo.png'),
-            filterQuality: FilterQuality.low, // Optimization for UI assets
+            filterQuality: FilterQuality.low,
           ),
         ),
       ),

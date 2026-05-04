@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'SetUpRevPlan.dart';
-import 'pages/RevisionPlanCalendarPage.dart';
+import 'RevisionPlanCalendarPage.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import 'pages/availability_calendar_dialog.dart';
+import 'availability_calendar_dialog.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
 import 'package:gp2_watad/services/revision_plan_service.dart';
 
@@ -114,7 +114,6 @@ void _showToast(String folderName) {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          const AppHeader(title: 'Revision plans'),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(

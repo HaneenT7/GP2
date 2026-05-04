@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'board_detail_page.dart';
-import 'package:gp2_watad/DashBoard.dart';
+import 'package:gp2_watad/pages/DashBoard.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
 
 
@@ -248,10 +248,6 @@ Widget build(BuildContext context) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. THE NEW GLOBAL HEADER
-        const AppHeader(title: 'Snaps Board'),
-
-        // 2. ACTION BUTTON ROW (Under the Header)
         Padding(
           padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
           child: Row(

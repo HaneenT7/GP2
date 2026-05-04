@@ -81,15 +81,11 @@ class _QuizLandingPageState extends State<QuizLandingPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── NEW UNIFIED HEADER ──
-                const AppHeader(title: 'Quiz'),
-
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Removed old _buildQuizHeader() and the top light-blue Container
                       const SizedBox(height: 12), 
                       _buildQuizUploadZone(),
                       if (_selectedQuizFileName != null) ...[

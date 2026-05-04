@@ -38,7 +38,7 @@ class FileService {
       // Create a unique file path
       final fileExtension = fileName.split('.').last.toLowerCase();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storageFileName = '${currentUserId}_${timestamp}.$fileExtension';
+      final storageFileName = '${currentUserId}_$timestamp.$fileExtension';
       final storagePath = 'courseFolders/$folderId/$storageFileName';
 
       // Upload to Firebase Storage

@@ -47,15 +47,15 @@ dependencies:
   file_picker: ^8.1.4
   dotted_border: ^3.1.0
   image_picker: ^1.0.7
-  webview_flutter: 4.4.2
   google_fonts: ^6.0.0
   http: ^1.2.0
 
-#PDF 
-  syncfusion_flutter_pdf: ^24.1.41
+# PDF (v24 Android plugin breaks on current Flutter — v1 embedding Registrar removed)
+  syncfusion_flutter_pdf: ^33.2.4
+  syncfusion_flutter_pdfviewer: ^33.2.4
+  url_launcher: ^6.3.2
 
 # for games endpoit
-http: ^1.2.0
   
 dev_dependencies:
   flutter_test:

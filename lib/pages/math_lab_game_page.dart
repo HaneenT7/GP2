@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -63,14 +64,25 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
           Uri.parse('https://shadify.yurace.pro/api/math/${endpoints[i]}'),
         );
         if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          // API returns "answer"; older code expected "result".
+          final dynamic rawAnswer = data['answer'] ?? data['result'];
+          final expr = data['expression'];
+          if (rawAnswer == null || expr == null) continue;
           _questions.add(_MathQuestion(
-            expression: data['expression'] as String,
-            result: data['result'].toString(),
+            expression: expr.toString(),
+            result: rawAnswer.toString(),
             symbol: symbols[i],
             color: colors[i],
           ));
         }
+      }
+      if (_questions.length != _totalQuestions) {
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
+        return;
       }
       setState(() { _isLoading = false; });
     } catch (e) {
@@ -81,7 +93,7 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
   void _submitAnswer() {
     if (_answered) return;
     final answer = _controller.text.trim();
-    final correct = answer == _questions[_currentIndex].result;
+    final correct = _mathAnswersMatch(answer, _questions[_currentIndex].result);
     setState(() {
       _answered = true;
       _isCorrect = correct;
@@ -411,4 +423,19 @@ class _MathQuestion {
     required this.symbol,
     required this.color,
   });
+}
+
+/// Shadify sends numeric [answer]; users may type "5", "5.0", or use comma decimals.
+bool _mathAnswersMatch(String userAnswer, String correctAnswer) {
+  final u = userAnswer.trim().replaceAll(',', '.');
+  final c = correctAnswer.trim().replaceAll(',', '.');
+  if (u.isEmpty) return false;
+  if (u == c) return true;
+  final nu = num.tryParse(u);
+  final nc = num.tryParse(c);
+  if (nu == null || nc == null) return false;
+  final du = nu.toDouble();
+  final dc = nc.toDouble();
+  final tol = math.max(1e-9, math.max(du.abs(), dc.abs()) * 1e-12);
+  return (du - dc).abs() <= tol;
 }

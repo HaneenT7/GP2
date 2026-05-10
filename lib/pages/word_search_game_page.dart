@@ -10,6 +10,8 @@ class WordSearchGamePage extends StatefulWidget {
 }
 
 class _WordSearchGamePageState extends State<WordSearchGamePage> {
+  final GlobalKey _gridKey = GlobalKey();
+
   List<List<String>> _grid = [];
   List<String> _words = [];
   List<String> _foundWords = [];
@@ -89,16 +91,36 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
     setState(() { _endRow = row; _endCol = col; });
   }
 
-  void _onPanEnd() {
-    if (_startRow == null || _startCol == null || _endRow == null || _endCol == null) return;
+  void _onPanEnd(BuildContext context) {
+    if (_startRow == null || _startCol == null || _endRow == null || _endCol == null) {
+      setState(() { _isDragging = false; _startRow = null; _startCol = null; _endRow = null; _endCol = null; });
+      return;
+    }
     if (_isValidDirection(_startRow!, _startCol!, _endRow!, _endCol!)) {
       final cells = _getCellsBetween(_startRow!, _startCol!, _endRow!, _endCol!);
       final word = _buildWordFromCells(cells);
       final reversed = word.split('').reversed.join();
+      String? matched;
       if (_words.contains(word) && !_foundWords.contains(word)) {
-        setState(() { _foundWords.add(word); _solvedCells.add(cells); });
+        matched = word;
       } else if (_words.contains(reversed) && !_foundWords.contains(reversed)) {
-        setState(() { _foundWords.add(reversed); _solvedCells.add(cells); });
+        matched = reversed;
+      }
+      if (matched != null) {
+        final foundWord = matched;
+        setState(() {
+          _foundWords.add(foundWord);
+          _solvedCells.add(cells);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Correct! Found: $foundWord',
+                textAlign: TextAlign.center),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF4CAF50),
+          ),
+        );
       }
     }
     setState(() { _isDragging = false; _startRow = null; _startCol = null; _endRow = null; _endCol = null; });
@@ -231,60 +253,92 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
     final cols = _grid[0].length;
 
     return LayoutBuilder(builder: (context, constraints) {
-      final cellSize = (constraints.maxWidth - 48) / cols;
-      return GestureDetector(
-        onPanEnd: (_) => _onPanEnd(),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF64B5F6), width: 2),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(rows, (row) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(cols, (col) {
-                    final selected = _isCellSelected(row, col);
-                    final solvedIdx = _getSolvedColorIndex(row, col);
-                    final isSolved = solvedIdx >= 0;
-                    Color cellColor = Colors.transparent;
-                    if (selected) cellColor = const Color(0xFF64B5F6).withOpacity(0.5);
-                    if (isSolved) cellColor = _solvedColors[solvedIdx % _solvedColors.length];
+      const outline = 2.0;
+      final availW = constraints.maxWidth;
+      // Outer stroke fits inside [availW]; inner cells fill remainder so Row sum never overflows.
+      final innerW = availW - 2 * outline;
+      final cellSize = innerW / cols;
+      final gridH = cellSize * rows;
 
-                    return GestureDetector(
-                      onTapDown: (_) => _onPanStart(row, col),
-                      onPanUpdate: (details) {
-                        final box = context.findRenderObject() as RenderBox?;
-                        if (box == null) return;
-                        final localPos = box.globalToLocal(details.globalPosition);
-                        final r = (localPos.dy / cellSize).floor().clamp(0, rows - 1);
-                        final c = (localPos.dx / cellSize).floor().clamp(0, cols - 1);
-                        _onPanUpdate(r, c);
-                      },
-                      child: Container(
-                        width: cellSize, height: cellSize,
+      void pointerToCell(Offset global, void Function(int r, int c) fn) {
+        final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
+        if (box == null) return;
+        final local = box.globalToLocal(global);
+        // Pointer coords are inside padded inner content (outline inset).
+        final ix = (local.dx - outline).clamp(0.0, innerW);
+        final iy = (local.dy - outline).clamp(0.0, gridH);
+        final c = (ix / cellSize).floor().clamp(0, cols - 1);
+        final r = (iy / cellSize).floor().clamp(0, rows - 1);
+        fn(r, c);
+      }
+
+      return SizedBox(
+        width: availW,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) {
+            pointerToCell(details.globalPosition, (r, c) => _onPanStart(r, c));
+          },
+          onPanUpdate: (details) {
+            pointerToCell(details.globalPosition, (r, c) => _onPanUpdate(r, c));
+          },
+          onPanEnd: (_) => _onPanEnd(context),
+          onPanCancel: () => _onPanEnd(context),
+          child: Container(
+            key: _gridKey,
+            width: availW,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+              border:
+                  Border.all(color: const Color(0xFF64B5F6), width: outline),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(rows, (row) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(cols, (col) {
+                      final selected = _isCellSelected(row, col);
+                      final solvedIdx = _getSolvedColorIndex(row, col);
+                      final isSolved = solvedIdx >= 0;
+                      Color cellColor = Colors.transparent;
+                      if (selected) {
+                        cellColor =
+                            const Color(0xFF64B5F6).withValues(alpha: 0.5);
+                      }
+                      if (isSolved) {
+                        cellColor =
+                            _solvedColors[solvedIdx % _solvedColors.length];
+                      }
+
+                      return Container(
+                        width: cellSize,
+                        height: cellSize,
                         decoration: BoxDecoration(
                           color: cellColor,
-                          border: Border.all(color: Colors.grey.shade700, width: 0.3),
+                          border: Border.all(
+                              color: Colors.grey.shade700, width: 0.3),
                         ),
                         child: Center(
                           child: Text(
                             _grid[row][col],
                             style: GoogleFonts.iceland(
-                              fontSize: cellSize * 0.55, fontWeight: FontWeight.bold,
-                              color: isSolved || selected ? Colors.white : const Color(0xFF64B5F6),
+                              fontSize: cellSize * 0.55,
+                              fontWeight: FontWeight.bold,
+                              color: isSolved || selected
+                                  ? Colors.white
+                                  : const Color(0xFF64B5F6),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                );
-              }),
+                      );
+                    }),
+                  );
+                }),
+              ),
             ),
           ),
         ),

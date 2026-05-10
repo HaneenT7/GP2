@@ -10,7 +10,6 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
-import 'package:gp2_watad/widgets/app_header.dart';
 import '../services/exam_notification_scheduler.dart';
 
 class DashBoard extends StatefulWidget {
@@ -67,12 +66,12 @@ class _DashBoardState extends State<DashBoard> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF553C76).withOpacity(0.08),
+                            color: const Color(0xFF553C76).withValues(alpha: 0.08),
                             blurRadius: 24,
                             offset: const Offset(0, 2),
                           ),
                           BoxShadow(
-                            color: const Color(0xFF553C76).withOpacity(0.05),
+                            color: const Color(0xFF553C76).withValues(alpha: 0.05),
                             blurRadius: 0,
                             spreadRadius: 1,
                           ),
@@ -359,48 +358,134 @@ class _ExamCardWidget extends StatelessWidget {
   }
 }
 
-class QuoteCardWidget extends StatelessWidget {
+class QuoteCardWidget extends StatefulWidget {
   const QuoteCardWidget({super.key});
 
   @override
+  State<QuoteCardWidget> createState() => _QuoteCardWidgetState();
+}
+
+class _QuoteCardWidgetState extends State<QuoteCardWidget> {
+  static const List<String> _quotes = [
+    'Follow your plan, not your mood.',
+    'Small steps every day beat a perfect plan you never start.',
+    "You're closer than you think — keep going.",
+    'Focus on progress, not perfection.',
+    "Today's effort is tomorrow's confidence.",
+    'Discipline is choosing what you want most over what you want now.',
+    'One focused session at a time builds real mastery.',
+    'Rest is part of the work — come back stronger.',
+    'You have overcome hard days before; this one is no different.',
+    'Show up for yourself, even when motivation is quiet.',
+    'Your future self will thank you for not giving up today.',
+    'Consistency beats intensity — stay steady.',
+  ];
+
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = _seedIndexForToday();
+  }
+
+  /// Stable pick per calendar day so the “daily” message refreshes naturally each day.
+  int _seedIndexForToday() {
+    final n = DateTime.now();
+    final dayKey = n.year * 10000 + n.month * 100 + n.day;
+    return dayKey % _quotes.length;
+  }
+
+  void _showNextQuote() {
+    setState(() => _index = (_index + 1) % _quotes.length);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-            colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
+    return Tooltip(
+      message: 'Tap for another motivational quote',
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('"',
-                  style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1)),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 8),
-                  child: Text('Follow your plan, not your mood',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.deepPurple.shade800)),
-                ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _showNextQuote,
+          borderRadius: BorderRadius.circular(12),
+          splashColor: Colors.white.withValues(alpha: 0.35),
+          highlightColor: Colors.white.withValues(alpha: 0.15),
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [Color(0xFFE9D5FF), Color(0xFFDDD6FE)]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('"',
+                          style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              height: 1)),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 8, left: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _quotes[_index],
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.deepPurple.shade800),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.auto_awesome,
+                                    size: 14,
+                                    color: Colors.deepPurple.shade600
+                                        .withValues(alpha: 0.65),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Tap for another',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.deepPurple.shade600
+                                          .withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                      right: -5,
+                      bottom: -5,
+                      child: Icon(Icons.psychology,
+                          size: 40,
+                          color: const Color(0xFF7C3AED)
+                              .withValues(alpha: 0.3))),
+                ],
               ),
-            ],
+            ),
           ),
-          Positioned(
-              right: -5,
-              bottom: -5,
-              child: Icon(Icons.psychology,
-                  size: 40, color: const Color(0xFF7C3AED).withOpacity(0.3))),
-        ],
+        ),
       ),
     );
   }
@@ -564,8 +649,13 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           try {
             final List<dynamic> daysList =
                 jsonDecode(data['dailyTasks'] as String? ?? '[]');
-            final dayData = daysList.firstWhere((day) => day['date'] == dateKey,
-                orElse: () => null);
+            dynamic dayData;
+            for (final day in daysList) {
+              if (day is Map && day['date'] == dateKey) {
+                dayData = day;
+                break;
+              }
+            }
             if (dayData != null && dayData['tasks'] != null) {
               for (var task in dayData['tasks']) {
                 dailyTaskWidgets.add(_buildTaskCard(

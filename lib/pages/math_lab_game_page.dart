@@ -5,7 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 class MathLabGamePage extends StatefulWidget {
-  const MathLabGamePage({super.key});
+  final VoidCallback onExit; // أضيفي هذا السطر
+  const MathLabGamePage(
+      {super.key, required this.onExit}); // وأضيفي required هنا
 
   @override
   State<MathLabGamePage> createState() => _MathLabGamePageState();
@@ -84,9 +86,14 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         });
         return;
       }
-      setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
     } catch (e) {
-      setState(() { _hasError = true; _isLoading = false; });
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
     }
   }
 
@@ -110,15 +117,17 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         _controller.clear();
       });
     } else {
-      setState(() { _isFinished = true; });
+      setState(() {
+        _isFinished = true;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
+    return Container(
+      color: Colors.white,
+      child: Column(
         children: [
           _buildTopBar(context),
           const Divider(height: 1),
@@ -144,8 +153,8 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, size: 24), // تغيير السهم إلى إكس
+              onPressed: widget.onExit, // استدعاء دالة الخروج التي مررناها
             ),
             Text(
               'Math Lab',
@@ -191,7 +200,8 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
           const SizedBox(height: 16),
           const Text('Failed to load questions'),
           const SizedBox(height: 16),
-          ElevatedButton(onPressed: _fetchAllQuestions, child: const Text('Retry')),
+          ElevatedButton(
+              onPressed: _fetchAllQuestions, child: const Text('Retry')),
         ],
       ),
     );
@@ -210,9 +220,12 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(_totalQuestions, (i) {
                 Color color;
-                if (i < _currentIndex) color = const Color(0xFF4CAF50);
-                else if (i == _currentIndex) color = q.color;
-                else color = Colors.grey.shade300;
+                if (i < _currentIndex)
+                  color = const Color(0xFF4CAF50);
+                else if (i == _currentIndex)
+                  color = q.color;
+                else
+                  color = Colors.grey.shade300;
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: 32,
@@ -254,9 +267,12 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
                   if (_answered) ...[
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
                       decoration: BoxDecoration(
-                        color: _isCorrect ? const Color(0xFF4CAF50) : const Color(0xFFE53935),
+                        color: _isCorrect
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFE53935),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -278,10 +294,12 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
             if (!_answered) ...[
               TextField(
                 controller: _controller,
-                keyboardType: const TextInputType.numberWithOptions(signed: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(signed: true),
                 textAlign: TextAlign.center,
                 autofocus: true,
-                style: GoogleFonts.iceland(fontSize: 32, fontWeight: FontWeight.bold),
+                style: GoogleFonts.iceland(
+                    fontSize: 32, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
                   hintText: 'Your answer...',
                   border: OutlineInputBorder(
@@ -349,7 +367,11 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
 
   Widget _buildFinishedScreen() {
     final percent = (_score / _totalQuestions * 100).round();
-    final emoji = percent == 100 ? '🏆' : percent >= 60 ? '👏' : '💪';
+    final emoji = percent == 100
+        ? '🏆'
+        : percent >= 60
+            ? '👏'
+            : '💪';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

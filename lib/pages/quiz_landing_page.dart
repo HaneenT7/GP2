@@ -4,8 +4,6 @@ import 'dart:typed_data';
 import '../services/pdf_text_extractor.dart';
 import '../services/gemini_service.dart';
 import 'quiz_page.dart';
-import 'package:gp2_watad/widgets/app_header.dart';
-
 
 class QuizLandingPage extends StatefulWidget {
   const QuizLandingPage({super.key});
@@ -18,6 +16,7 @@ class _QuizLandingPageState extends State<QuizLandingPage> {
   String? _selectedQuizFileName;
   Uint8List? _selectedQuizFileBytes;
   bool _isGeneratingQuiz = false;
+  List? _generatedQuiz;
 
   Future<void> _pickQuizFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -62,7 +61,11 @@ class _QuizLandingPageState extends State<QuizLandingPage> {
         return;
       }
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => QuizPage(quiz: quiz)));
+      
+      setState(() {
+        _generatedQuiz = quiz;
+      });
+      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
@@ -70,8 +73,19 @@ class _QuizLandingPageState extends State<QuizLandingPage> {
     }
   }
 
- @override
+  @override
   Widget build(BuildContext context) {
+    if (_generatedQuiz != null) {
+      return QuizPage(
+        quiz: _generatedQuiz!,
+        onExit: () {
+          setState(() {
+            _generatedQuiz = null;
+          });
+        },
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -100,13 +114,6 @@ class _QuizLandingPageState extends State<QuizLandingPage> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildQuizHeader() {
-    return const Text(
-      'Quiz',
-      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black),
     );
   }
 

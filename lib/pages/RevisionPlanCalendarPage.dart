@@ -269,6 +269,8 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
   }
 
   Future<void> _rescheduleOverdue(Map<String, dynamic> planData) async {
+    final beforeDailyTasks = _parseDailyTasksFromPlan(planData);
+    final wasString = planData['dailyTasks'] is String;
     await _runRegenerate(
       status: 'Rescheduling overdue tasks…',
       action: () => _regenerateClient.rescheduleOverdueTasks(
@@ -276,6 +278,13 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
         planData: planData,
       ),
       successMessage: 'Plan updated. Overdue tasks were sent to reschedule.',
+      onCompleted: (result) async {
+        await _markRescheduledTasks(
+          beforeDailyTasks: beforeDailyTasks,
+          result: result,
+          storeAsString: wasString,
+        );
+      },
     );
   }
 
@@ -283,6 +292,7 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
     required String status,
     required Future<RevisionPlanResult> Function() action,
     required String successMessage,
+    Future<void> Function(RevisionPlanResult result)? onCompleted,
   }) async {
     setState(() {
       _regeneratingPlan = true;
@@ -292,6 +302,9 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
       final result = await action();
       if (!mounted) return;
       if (result.status == 'completed') {
+        if (onCompleted != null) {
+          await onCompleted(result);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(successMessage)),
         );
@@ -321,6 +334,164 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
         });
       }
     }
+  }
+
+  List<dynamic> _parseDailyTasksFromPlan(Map<String, dynamic> planData) {
+    final raw = planData['dailyTasks'];
+    if (raw is String) {
+      try {
+        return jsonDecode(raw) as List<dynamic>;
+      } catch (_) {
+        return [];
+      }
+    }
+    if (raw is List) return List<dynamic>.from(raw);
+    return [];
+  }
+
+  Future<void> _markRescheduledTasks({
+    required List<dynamic> beforeDailyTasks,
+    required RevisionPlanResult result,
+    required bool storeAsString,
+  }) async {
+    List<dynamic> afterDailyTasks = [];
+    if (result.planContent != null && result.planContent!.trim().isNotEmpty) {
+      try {
+        afterDailyTasks = jsonDecode(result.planContent!) as List<dynamic>;
+      } catch (_) {}
+    }
+    if (afterDailyTasks.isEmpty) {
+      final snap = await FirebaseFirestore.instance
+          .collection('revisionPlans')
+          .doc(widget.planId)
+          .get();
+      final data = snap.data();
+      if (data == null) return;
+      afterDailyTasks = _parseDailyTasksFromPlan(data);
+    }
+    if (afterDailyTasks.isEmpty) return;
+
+    // n8n often omits or zeroes `availableMinutes` on partial updates; restore from the
+    // snapshot taken before reschedule so days don't show "0 minutes" / no availability.
+    final mergedDays =
+        _mergeBaselineDayMetadataOntoAfter(beforeDailyTasks, afterDailyTasks);
+
+    final beforeDateByTaskId = <String, String>{};
+    for (final day in beforeDailyTasks) {
+      if (day is! Map) continue;
+      final dateKey = _revisionDayDateKey(day['date']);
+      if (dateKey.isEmpty) continue;
+      final tasks = day['tasks'] as List<dynamic>? ?? [];
+      for (final t in tasks) {
+        if (t is! Map) continue;
+        final id = t['taskId']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        beforeDateByTaskId[id] = dateKey;
+      }
+    }
+
+    final movedTaskIds = <String>{};
+    for (final day in mergedDays) {
+      final dateKey = _revisionDayDateKey(day['date']);
+      if (dateKey.isEmpty) continue;
+      final tasks = day['tasks'] as List<dynamic>? ?? [];
+      for (final t in tasks) {
+        if (t is! Map) continue;
+        final id = t['taskId']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final beforeDate = beforeDateByTaskId[id];
+        if (beforeDate != null && beforeDate != dateKey) {
+          movedTaskIds.add(id);
+        }
+      }
+    }
+
+    final updated = <Map<String, dynamic>>[];
+    for (final day in mergedDays) {
+      final dayMap = Map<String, dynamic>.from(day);
+      final tasks = dayMap['tasks'] as List<dynamic>? ?? [];
+      dayMap['tasks'] = tasks.map((task) {
+        final t = Map<String, dynamic>.from(task as Map<dynamic, dynamic>);
+        final id = t['taskId']?.toString() ?? '';
+        if (movedTaskIds.isEmpty) {
+          t.remove('rescheduled');
+        } else {
+          t['rescheduled'] = movedTaskIds.contains(id);
+        }
+        return t;
+      }).toList();
+      updated.add(dayMap);
+    }
+
+    await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .update({
+      'dailyTasks': storeAsString ? jsonEncode(updated) : updated,
+    });
+  }
+
+  /// Normalizes day keys so `2026-05-10` and `2026-05-10T00:00:00.000Z` match.
+  String _revisionDayDateKey(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    if (s.isEmpty) return '';
+    try {
+      final head = s.contains('T') ? s.substring(0, s.indexOf('T')) : s;
+      final d = DateTime.parse(head);
+      final y = d.year.toString().padLeft(4, '0');
+      final m = d.month.toString().padLeft(2, '0');
+      final day = d.day.toString().padLeft(2, '0');
+      return '$y-$m-$day';
+    } catch (_) {
+      return s;
+    }
+  }
+
+  int? _asIntMinutes(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.round();
+    return int.tryParse(v.toString().trim());
+  }
+
+  /// Copies `availableMinutes` and weekday `day` from [beforeDailyTasks] when n8n drops them.
+  List<Map<String, dynamic>> _mergeBaselineDayMetadataOntoAfter(
+    List<dynamic> beforeDailyTasks,
+    List<dynamic> afterDailyTasks,
+  ) {
+    final baseline = <String, Map<String, dynamic>>{};
+    for (final day in beforeDailyTasks) {
+      if (day is! Map) continue;
+      final key = _revisionDayDateKey(day['date']);
+      if (key.isEmpty) continue;
+      baseline[key] = Map<String, dynamic>.from(day);
+    }
+
+    final out = <Map<String, dynamic>>[];
+    for (final day in afterDailyTasks) {
+      if (day is! Map) continue;
+      final dm = Map<String, dynamic>.from(day);
+      final key = _revisionDayDateKey(dm['date']);
+      final prev = key.isEmpty ? null : baseline[key];
+      if (prev != null) {
+        final prevAm = _asIntMinutes(prev['availableMinutes']);
+        final curRaw = dm['availableMinutes'];
+        final curAm = _asIntMinutes(curRaw);
+
+        if (!dm.containsKey('availableMinutes') || curRaw == null) {
+          dm['availableMinutes'] = prev['availableMinutes'];
+        } else if (curAm != null && curAm <= 0 && prevAm != null && prevAm > 0) {
+          dm['availableMinutes'] = prev['availableMinutes'];
+        }
+
+        final pd = prev['day']?.toString().trim() ?? '';
+        final cd = dm['day']?.toString().trim() ?? '';
+        if (cd.isEmpty && pd.isNotEmpty) {
+          dm['day'] = prev['day'];
+        }
+      }
+      out.add(dm);
+    }
+    return out;
   }
   Widget _buildWeekNavigation() {
   return Container(
@@ -581,7 +752,13 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
           final index = entry.key;
           final task = entry.value as Map<dynamic, dynamic>;
           final isOverdue = isRevisionTaskOverdue(dayDate, task);
-          return _buildTaskCard(task, index, isOverdue: isOverdue);
+          final isRescheduled = task['rescheduled'] == true;
+          return _buildTaskCard(
+            task,
+            index,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          );
         }).toList(),
       ],
     );
@@ -680,6 +857,7 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                     ...tasks.take(3).map((task) {
                       final t = task as Map<dynamic, dynamic>;
                       final overdue = isRevisionTaskOverdue(day, t);
+                      final isRescheduled = t['rescheduled'] == true;
                       return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(
@@ -689,12 +867,16 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                                 ? Icons.check_circle
                                 : overdue
                                     ? Icons.warning_amber_rounded
+                                    : isRescheduled
+                                        ? Icons.schedule
                                     : Icons.radio_button_unchecked,
                             size: 16,
                             color: task['completed'] == true
                                 ? Colors.green
                                 : overdue
                                     ? Colors.deepOrange
+                                    : isRescheduled
+                                        ? Colors.indigo
                                     : Colors.grey,
                           ),
                           const SizedBox(width: 8),
@@ -710,6 +892,8 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                                     ? Colors.grey
                                     : overdue
                                         ? Colors.deepOrange.shade900
+                                        : isRescheduled
+                                            ? Colors.indigo.shade700
                                         : Colors.black87,
                                 fontWeight:
                                     overdue ? FontWeight.w600 : FontWeight.normal,
@@ -827,7 +1011,12 @@ void _jumpToFirstOverdueDay(List<dynamic> dailyTasks) {
   });
 }
 
-Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOverdue}) {
+Widget _buildTaskCard(
+  Map<dynamic, dynamic> task,
+  int index, {
+  required bool isOverdue,
+  required bool isRescheduled,
+}) {
   final isCompleted = task['completed'] == true;
   final title = task['title'] ?? '';
   final course = task['course'] ?? 'Study Task';
@@ -848,8 +1037,10 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOv
               ? Colors.transparent
               : isOverdue
                   ? Colors.deepOrange.shade300
+                  : isRescheduled
+                      ? Colors.indigo.shade200
                   : const Color(0xFFE8E8E8),
-          width: isOverdue && !isCompleted ? 2 : 1,
+          width: (isOverdue || isRescheduled) && !isCompleted ? 2 : 1,
         ),
         boxShadow: [
           BoxShadow(
@@ -906,6 +1097,8 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOv
                               ? Colors.grey
                               : isOverdue
                                   ? Colors.deepOrange.shade900
+                                  : isRescheduled
+                                      ? Colors.indigo.shade700
                                   : Colors.black87,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
@@ -931,6 +1124,28 @@ Widget _buildTaskCard(Map<dynamic, dynamic> task, int index, {required bool isOv
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               color: Colors.deepOrange.shade900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (isRescheduled && !isCompleted)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Rescheduled',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.indigo.shade700,
                             ),
                           ),
                         ),

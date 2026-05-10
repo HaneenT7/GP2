@@ -172,16 +172,19 @@ class RevisionPlanRegenerateClient {
       final data = snap.data();
       if (data == null) return;
 
-      final result = RevisionPlanResult.fromFirestore(data);
-      if (result.status == 'completed' || result.status == 'error') {
-        finish(result);
+      final rawStatus = (data['status'] as String? ?? 'pending').toLowerCase();
+      if (rawStatus == 'error') {
+        finish(RevisionPlanResult.fromFirestore(data));
         return;
       }
 
+      // Existing revision plans usually stay Firestore status "completed" (or pending
+      // while dailyTasks already exists — see RevisionPlanResult.fromFirestore).
+      // Do NOT finish on status alone or the listener completes on the first snapshot
+      // before n8n writes updated dailyTasks ("Reschedule overdue" looks like it worked
+      // but nothing changes).
       final after = jsonEncode(_parseDailyTasksField(data));
-      if (after.isNotEmpty &&
-          after != baselineDailyTasksJson &&
-          (data['status'] as String? ?? '') != 'error') {
+      if (after.isNotEmpty && after != baselineDailyTasksJson) {
         finish(RevisionPlanResult(
           requestId: planId,
           status: 'completed',

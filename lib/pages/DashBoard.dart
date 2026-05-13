@@ -646,6 +646,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
+          // Extract the material title we saved in n8n
+          final String pdfName = data['materialTitle'] ?? 'Study Material'; 
+          
           try {
             final List<dynamic> daysList =
                 jsonDecode(data['dailyTasks'] as String? ?? '[]');
@@ -661,9 +664,11 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                 dailyTaskWidgets.add(_buildTaskCard(
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
+                  pdfName: task['fileName'] ?? 'General',
+                  pages: task['pages']?.toString() ?? '', // Passed Pages
                   isCompleted: task['completed'] ?? false,
                   isOverdue: _isDateBeforeToday(dateKey) &&
-                      (task['completed'] != true), // ADDED LOGIC
+                      (task['completed'] != true),
                   taskId: task['taskId'],
                   docId: doc.id,
                   fullDailyTasks: daysList,
@@ -696,8 +701,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   Widget _buildTaskCard({
     required String title,
     required String folder,
+    required String pdfName, 
+    required String pages, 
     required bool isCompleted,
-    required bool isOverdue, // ADDED PARAM
+    required bool isOverdue, 
     required String taskId,
     required String docId,
     required List fullDailyTasks,
@@ -718,6 +725,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Align top for multi-line
         children: [
           InkWell(
             onTap: () async {
@@ -734,9 +742,12 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   .doc(docId)
                   .update({'dailyTasks': jsonEncode(fullDailyTasks)});
             },
-            child: Icon(
-              isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: isCompleted ? Colors.green : Colors.grey,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isCompleted ? Colors.green : Colors.grey,
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -751,26 +762,46 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                     decoration: isCompleted ? TextDecoration.lineThrough : null,
                     color: isCompleted
                         ? Colors.green.shade700
-                        : (isOverdue
-                            ? Colors.deepOrange.shade900
-                            : Colors.black87),
+                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
                   ),
                 ),
+                const SizedBox(height: 4),
+                // Displaying Folder and PDF Name
                 Text(
-                  folder,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isCompleted ? Colors.green.shade400 : Colors.grey,
+                    '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
+                    style: TextStyle(
+                    fontSize: 11,
+                    color: isCompleted ? Colors.green.shade400 : Colors.grey.shade600,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                if (isOverdue && !isCompleted) ...[
-                  const SizedBox(height: 4),
-                  Text('Overdue',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepOrange.shade800)),
-                ]
+                const SizedBox(height: 6),
+                // Displaying Page Numbers and Status
+                Row(
+                  children: [
+                    if (pages.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'pp. $pages',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (isOverdue && !isCompleted)
+                      Text('Overdue',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepOrange.shade800)),
+                  ],
+                ),
               ],
             ),
           ),

@@ -98,7 +98,7 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
                     alignment: Alignment.centerLeft,
                     child: Container(
                       width: 650,
-                      height: 350,
+                      height: 400,
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
                         color: const Color(0xFFF9F9F9),
@@ -320,81 +320,81 @@ Future<void> _onGenerateRevisionPlan() async {
     );
   }
 
-  Widget _buildExamDateCalendar() {
-    final today = _dateOnly(DateTime.now());
-    final y = _calendarDisplayMonth.year;
-    final m = _calendarDisplayMonth.month;
-    final daysInMonth = DateTime(y, m + 1, 0).day;
-    final firstWeekday = DateTime(y, m, 1).weekday;
-    final leading = firstWeekday % 7;
-    final cellCount = ((leading + daysInMonth + 6) ~/ 7) * 7;
+Widget _buildExamDateCalendar() {
+  final today = _dateOnly(DateTime.now());
+  final y = _calendarDisplayMonth.year;
+  final m = _calendarDisplayMonth.month;
+  final daysInMonth = DateTime(y, m + 1, 0).day;
+  final firstWeekday = DateTime(y, m, 1).weekday;
+  final leading = firstWeekday % 7;
+  
+  const cellCount = 42; 
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: _canGoToPreviousMonth(today)
-                  ? () => setState(() =>
-                      _calendarDisplayMonth = DateTime(y, m - 1, 1))
-                  : null,
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Expanded(
-              child: Text(_monthYearLabel(y, m),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-            ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(
-                  () => _calendarDisplayMonth = DateTime(y, m + 1, 1)),
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-              .map((s) => SizedBox(
-                    width: 36,
-                    child: Text(s,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w500)),
-                  ))
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              childAspectRatio: 1.15,
-            ),
-            itemCount: cellCount,
-            itemBuilder: (context, index) {
-              if (index < leading) return const SizedBox.shrink();
-              final dayNum = index - leading + 1;
-              if (dayNum > daysInMonth)
-                return const SizedBox.shrink();
-              return _buildDayCell(DateTime(y, m, dayNum), today);
-            },
+  return Column(
+    mainAxisSize: MainAxisSize.min, // Tell column to take minimum needed space
+    children: [
+      Row(
+        children: [
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: _canGoToPreviousMonth(today)
+                ? () => setState(() =>
+                    _calendarDisplayMonth = DateTime(y, m - 1, 1))
+                : null,
+            icon: const Icon(Icons.chevron_left),
           ),
+          Expanded(
+            child: Text(_monthYearLabel(y, m),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(
+                () => _calendarDisplayMonth = DateTime(y, m + 1, 1)),
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+            .map((s) => SizedBox(
+                  width: 36,
+                  child: Text(s,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500)),
+                ))
+            .toList(),
+      ),
+      const SizedBox(height: 8),
+      Expanded(
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          // FIX: Switch to MaxCrossAxisExtent to prevent extreme stretching on web/desktop widths
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 90, // Caps cell width expansion
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            childAspectRatio: 1.6, // Keeps layout short and wide to fit inside container perfectly
+          ),
+          itemCount: cellCount, 
+          itemBuilder: (context, index) {
+            if (index < leading) return const SizedBox.shrink();
+            final dayNum = index - leading + 1;
+            if (dayNum > daysInMonth) return const SizedBox.shrink(); 
+            return _buildDayCell(DateTime(y, m, dayNum), today);
+          },
         ),
-      ],
-    );
-  }
-
+      ),
+    ],
+  );
+}
   // ─────────────────────────────────────────
   // FOLDER & FILE SECTIONS
   // ─────────────────────────────────────────

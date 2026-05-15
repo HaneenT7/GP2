@@ -87,9 +87,13 @@ class _RevPlanPageState extends State<RevPlanPage> {
               onCompleted: (result) {
                 if (!mounted) return;
                 if (result.status == 'completed') {
-                  setState(() => _generatingFolderName = null);
                   _showToast(folderName);
-                } else {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() => _generatingFolderName = null);
+            _showToast(folderName);
+          }
+        }); }else{
                   setState(() => _generatingFolderName = null);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -238,8 +242,10 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         List<dynamic> dailyTasks = [];
         if (rawTasks is String) {
           try {
-            dailyTasks = jsonDecode(rawTasks) as List<dynamic>;
-          } catch (_) {}
+final List dailyTasks = rawTasks is String 
+        ? jsonDecode(rawTasks) 
+        : (rawTasks as List);
+            } catch (e) {print("Error decoding tasks: $e");}
         } else if (rawTasks is List) {
           dailyTasks = rawTasks;
         }
@@ -478,9 +484,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
   // ── Action Toolbar ───────────────────────────────────────────────────────
 
-  Widget _buildActionToolbar(
-      Map<String, dynamic> planData, List<dynamic> dailyTasks) {
+  Widget _buildActionToolbar(Map<String, dynamic> planData, List<dynamic> dailyTasks) {
     final overdueCount = countOverdueTasks(dailyTasks);
+    final folderName = planData['folderName'] ?? 'Revision Plan';
 
     return Padding(
       padding:
@@ -506,12 +512,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
             ),
           ),
           const SizedBox(width: 10),
-          // Delete Plan (not yet implemented)
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () {
-                // TODO: implement delete plan
-              },
+              onPressed: () => _deletePlan(folderName),              
               icon: const Icon(Icons.delete_outline, size: 16),
               label:
                   const Text('Delete Plan', style: TextStyle(fontSize: 13)),
@@ -528,7 +531,132 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
   }
+// ── delete Plan ─────────────────────────────────────────────────────
+  Future<void> _deletePlan(String folderName) async {
+    final confirmDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Revision Plan?'),
+        content: Text('Are you sure you want to delete "$folderName"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
 
+    if (confirmDelete != true || !mounted) return;
+
+    // 1. Capture the immediate Overlay state before changing the screen view state
+    final OverlayState overlayState = Overlay.of(context);
+
+    // 2. Pop back instantly to prevent the document stream deletion glitch
+    widget.onBack();
+
+    try {
+      // 3. Remove the plan from Firebase asynchronously
+      await FirebaseFirestore.instance
+          .collection('revisionPlans')
+          .doc(widget.planId)
+          .delete();
+      
+      // 4. Trigger our responsive, custom-fading micro pill
+      _showFadingPill(overlayState);
+
+    } catch (e) {
+      // Fallback safe logger if background threads get interrupted
+      debugPrint("Error deleting document: $e");
+    }
+  }
+
+  // ── Custom Fading Pill Animation Handler ──────────────────────────────
+  void _showFadingPill(OverlayState overlayState) {
+    late OverlayEntry entry;
+    final ValueNotifier<double> opacityNotifier = ValueNotifier<double>(0.0);
+
+    entry = OverlayEntry(
+      builder: (BuildContext context) => Positioned(
+        bottom: MediaQuery.of(context).size.height * 0.12, // Perfectly responsive lower third
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ValueListenableBuilder<double>(
+              valueListenable: opacityNotifier,
+              builder: (BuildContext context, double opacityValue, Widget? child) {
+                return AnimatedOpacity(
+                  opacity: opacityValue,
+                  duration: const Duration(milliseconds: 300), // Clean fade transition
+                  curve: Curves.easeInOut,
+                  child: child,
+                );
+              },
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), // Small compact size
+                  decoration: BoxDecoration(
+                    color: Colors.white, // Pure white base
+                    borderRadius: BorderRadius.circular(100), // Sleek pill styling
+                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5), // Soft lavender outline
+                    boxShadow: [
+                      BoxShadow(
+                        color: _planPurple.withOpacity(0.08),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min, // Hugs the elements tightly
+                    children: [
+                      Icon(Icons.delete_outline, color: _planPurple, size: 15), // Smaller custom colored icon
+                      SizedBox(width: 6),
+                      Text(
+                        'Plan deleted',
+                        style: TextStyle(
+                          color: _planPurple, // Pure purple typography text
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13, // Minimal text footprint
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Safely insert into the view hierarchy tree
+    overlayState.insert(entry);
+    
+    // Smoothly kick off the fade-in animation loop
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (opacityNotifier.hashCode != 0) {
+        opacityNotifier.value = 1.0;
+      }
+    });
+
+    // Handle automated fade-out step and memory disposal window 
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      opacityNotifier.value = 0.0;
+      Future.delayed(const Duration(milliseconds: 300), () {
+        entry.remove();
+        opacityNotifier.dispose();
+      });
+    });
+  }
   // ── Week nav buttons ─────────────────────────────────────────────────────
 
   Widget _buildWeekNavButtons() {

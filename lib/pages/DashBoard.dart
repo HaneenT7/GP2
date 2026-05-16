@@ -10,7 +10,7 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
-import '../services/exam_notification_scheduler.dart';
+
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -24,8 +24,7 @@ class _DashBoardState extends State<DashBoard> {
 
   @override
   void initState() {
-    super.initState();
-    ExamNotificationScheduler.scheduleAll();
+    super.initState(); 
   }
 
   // Same order as IndexedStack children

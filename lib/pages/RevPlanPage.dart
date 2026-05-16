@@ -82,29 +82,31 @@ class _RevPlanPageState extends State<RevPlanPage> {
               _isSetupMode = false;
               _generatingFolderName = folderName;
             });
-            _revisionPlanService.listenForPlan(
-              requestId: requestId,
-              onCompleted: (result) {
-                if (!mounted) return;
-                if (result.status == 'completed') {
-                  _showToast(folderName);
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            setState(() => _generatingFolderName = null);
-            _showToast(folderName);
-          }
-        }); }else{
-                  setState(() => _generatingFolderName = null);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(result.errorMessage ?? 'Something went wrong.'),
-                      backgroundColor: Colors.red.shade700,
-                    ),
-                  );
-                }
-              },
-            );
-          },
+_revisionPlanService.listenForPlan(
+  requestId: requestId,
+  onCompleted: (result) {
+
+    if (result.status == 'completed') {
+      if (mounted) {
+        setState(() => _generatingFolderName = null);
+        _showToast(folderName);
+      } else {
+        // Widget rebuilt but state still needs clearing
+        _generatingFolderName = null;
+      }
+    } else {
+      if (mounted) {
+        setState(() => _generatingFolderName = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.errorMessage ?? 'Something went wrong.'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  },
+);          },
         ),
       );
     }

@@ -21,6 +21,86 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
     '#32CD32', '#9370DB', '#FF6347', '#20B2AA',
   ];
 
+  /// Sleek alternative UI feedback to replace heavy success alerts
+  void _showFadingPill(OverlayState overlayState, String message) {
+    late OverlayEntry entry;
+    final ValueNotifier<double> opacityNotifier = ValueNotifier<double>(0.0);
+    const Color localPurple = Color(0xFF6B46C1);
+
+    entry = OverlayEntry(
+      builder: (BuildContext context) => Positioned(
+        bottom: MediaQuery.of(context).size.height * 0.12, 
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ValueListenableBuilder<double>(
+              valueListenable: opacityNotifier,
+              builder: (BuildContext context, double opacityValue, Widget? child) {
+                return AnimatedOpacity(
+                  opacity: opacityValue,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: child,
+                );
+              },
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: localPurple.withOpacity(0.08),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.delete_outline, color: localPurple, size: 15),
+                      const SizedBox(width: 6),
+                      Text(
+                        message,
+                        style: const TextStyle(
+                          color: localPurple,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (opacityNotifier.hashCode != 0) {
+        opacityNotifier.value = 1.0;
+      }
+    });
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      opacityNotifier.value = 0.0;
+      Future.delayed(const Duration(milliseconds: 300), () {
+        entry.remove();
+        opacityNotifier.dispose();
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Swap between grid and detail in-place
@@ -123,7 +203,6 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
     return GestureDetector(
       onTap: () {
         if (showActions) return;
-        // Open detail in-place — no Navigator
         setState(() => _openedFolder = folder);
       },
       onLongPress: () => setState(() => _isManageMode = true),
@@ -316,8 +395,11 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
                     try {
                       await _folderService.deleteFolder(folder.id);
                       if (context.mounted) {
-                        Navigator.pop(context);
-                        _showSuccessDialog('Folder Deleted', 'The folder is deleted successfully');
+                        Navigator.pop(context); // Close Confirmation Dialog
+                        
+                        // Show the minimalist fading pill toast directly on screen
+                        final overlayState = Overlay.of(context);
+                        _showFadingPill(overlayState, 'Folder deleted');
                       }
                     } catch (e) {
                       if (context.mounted) {

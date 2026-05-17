@@ -1,4 +1,37 @@
+import 'dart:convert';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Helpers for "overdue" revision tasks: scheduled on a day before today and not completed.
+
+List<dynamic> parseRevisionPlanDailyTasks(Map<String, dynamic> planData) {
+  final raw = planData['dailyTasks'];
+  if (raw is String) {
+    try {
+      return jsonDecode(raw) as List<dynamic>;
+    } catch (_) {
+      return [];
+    }
+  }
+  if (raw is List) return List<dynamic>.from(raw);
+  return [];
+}
+
+/// Same rule as active vs passed plans on [RevPlanPage]: exam is not in the future.
+bool isRevisionPlanExamPassed(Map<String, dynamic> plan) {
+  final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
+  if (raw == null) return false;
+  final DateTime exam = raw is Timestamp
+      ? raw.toDate()
+      : DateTime.parse(raw.toString());
+  return !exam.isAfter(DateTime.now());
+}
+
+/// Overdue count for one plan; returns 0 when the exam date has passed.
+int countOverdueTasksForPlan(Map<String, dynamic> plan) {
+  if (isRevisionPlanExamPassed(plan)) return 0;
+  return countOverdueTasks(parseRevisionPlanDailyTasks(plan));
+}
 
 bool _sameCalendarDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;

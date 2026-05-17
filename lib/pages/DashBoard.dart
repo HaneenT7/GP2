@@ -12,6 +12,7 @@ import 'profile_page.dart';
 import 'quiz_landing_page.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
 import '../services/exam_notification_scheduler.dart';
+import '../utils/revision_plan_overdue.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -140,21 +141,32 @@ class DashboardHomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(32, 28, 32, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const GreetingWidget(),
-            const SizedBox(height: 28),
-            const UpcomingExamsSection(),
-            const SizedBox(height: 28),
-            const DailyTasksSection(),
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 600;
+
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              compact ? 16 : 32,
+              compact ? 20 : 28,
+              compact ? 16 : 32,
+              compact ? 16 : 24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const GreetingWidget(),
+                const SizedBox(height: 28),
+                const UpcomingExamsSection(),
+                const SizedBox(height: 28),
+                const DailyTasksSection(),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -230,103 +242,118 @@ class UpcomingExamsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: 1,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stackSections = constraints.maxWidth < 720;
+        final examsSection = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.school_outlined,
-                        size: 22, color: Colors.purple.shade300),
-                    const SizedBox(width: 8),
-                    const Text('Upcoming Exams',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black)),
-                    const Text(' *',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.red)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: _revisionPlansStream(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final today = DateTime.now();
-                      final startToday =
-                          DateTime(today.year, today.month, today.day);
-                      final plans = (snapshot.data ?? [])
-                          .where((p) => _examDateFromPlan(p) != null)
-                          .toList()
-                        ..sort((a, b) => _examDateFromPlan(a)!
-                            .compareTo(_examDateFromPlan(b)!));
-
-                      final upcoming = plans
-                          .where((p) =>
-                              !_examDateFromPlan(p)!.isBefore(startToday))
-                          .take(2)
-                          .toList();
-
-                      if (upcoming.isEmpty) {
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
-                              borderRadius: BorderRadius.circular(12)),
-                          child: const Text('No upcoming exams yet.',
-                              style: TextStyle(
-                                  fontSize: 14, color: Colors.black54)),
-                        );
-                      }
-
-                      return Column(
-                        children: List.generate(upcoming.length, (index) {
-                          final plan = upcoming[index];
-                          final examDate = _examDateFromPlan(plan)!;
-                          return Padding(
-                            padding: EdgeInsets.only(
-                                bottom: index == upcoming.length - 1 ? 0 : 12),
-                            child: _ExamCardWidget(
-                              title:
-                                  '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                              date:
-                                  '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
-                              color: index.isEven
-                                  ? const Color(0xFFFFF3CD)
-                                  : const Color(0xFFFFE4CC),
-                            ),
-                          );
-                        }),
-                      );
-                    },
-                  ),
-                ),
+                Icon(Icons.school_outlined,
+                    size: 22, color: Colors.purple.shade300),
+                const SizedBox(width: 8),
+                const Text('Upcoming Exams',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black)),
+                const Text(' *',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red)),
               ],
             ),
+            const SizedBox(height: 12),
+            _buildUpcomingExamsList(),
+          ],
+        );
+        final quoteSection = Padding(
+          padding: EdgeInsets.only(top: stackSections ? 16 : 34),
+          child: const QuoteCardWidget(),
+        );
+
+        if (stackSections) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              examsSection,
+              quoteSection,
+            ],
+          );
+        }
+
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 1, child: examsSection),
+              const SizedBox(width: 24),
+              Expanded(flex: 1, child: quoteSection),
+            ],
           ),
-          const SizedBox(width: 24),
-          const Expanded(
-            flex: 1,
-            child: Padding(
-              padding: EdgeInsets.only(top: 34),
-              child: QuoteCardWidget(),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUpcomingExamsList() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _revisionPlansStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final today = DateTime.now();
+        final startToday = DateTime(today.year, today.month, today.day);
+        final plans = (snapshot.data ?? [])
+            .where((p) => _examDateFromPlan(p) != null)
+            .toList()
+          ..sort((a, b) =>
+              _examDateFromPlan(a)!.compareTo(_examDateFromPlan(b)!));
+
+        final upcoming = plans
+            .where((p) => !_examDateFromPlan(p)!.isBefore(startToday))
+            .take(2)
+            .toList();
+
+        if (upcoming.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12)),
+            child: const Text('No upcoming exams yet.',
+                style: TextStyle(fontSize: 14, color: Colors.black54)),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(upcoming.length, (index) {
+            final plan = upcoming[index];
+            final examDate = _examDateFromPlan(plan)!;
+            return Padding(
+              padding: EdgeInsets.only(
+                  bottom: index == upcoming.length - 1 ? 0 : 12),
+              child: _ExamCardWidget(
+                title: '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
+                date:
+                    '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                color: index.isEven
+                    ? const Color(0xFFFFF3CD)
+                    : const Color(0xFFFFE4CC),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
@@ -345,13 +372,19 @@ class _ExamCardWidget extends StatelessWidget {
       decoration:
           BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title,
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87)),
+                  color: Colors.black87),
+            ),
+          ),
+          const SizedBox(width: 12),
           Text(date, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ],
       ),
@@ -438,15 +471,6 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
-  bool _isDateBeforeToday(String dateKey) {
-    final d = DateTime.tryParse(dateKey);
-    if (d == null) return false;
-    final n = DateTime.now();
-    final today = DateTime(n.year, n.month, n.day);
-    final day = DateTime(d.year, d.month, d.day);
-    return day.isBefore(today);
-  }
-
   @override
   Widget build(BuildContext context) {
     final selectedDate = _weekDates[_selectedDayIndex];
@@ -494,17 +518,21 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
 
         for (final doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final List<dynamic> daysList =
-              jsonDecode(data['dailyTasks'] as String? ?? '[]');
+          if (isRevisionPlanExamPassed(data)) continue;
+          final daysList = parseRevisionPlanDailyTasks(data);
+          totalOverdue += countOverdueTasks(daysList);
 
           for (final day in daysList) {
+            if (day is! Map) continue;
             final dayDateKey = day['date']?.toString();
-            if (dayDateKey == null || !_isDateBeforeToday(dayDateKey)) continue;
+            if (dayDateKey == null || dayDateKey != dateKey) continue;
+            final dayDate = DateTime.tryParse(dayDateKey);
+            if (dayDate == null) continue;
             final tasks = day['tasks'] as List<dynamic>? ?? [];
             for (final task in tasks) {
-              if (task['completed'] != true) {
-                totalOverdue++;
-                if (dayDateKey == dateKey) overdueOnSelectedDay++;
+              if (task is Map &&
+                  isRevisionTaskOverdue(dayDate, task)) {
+                overdueOnSelectedDay++;
               }
             }
           }
@@ -561,19 +589,23 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
+          final examPassed = isRevisionPlanExamPassed(data);
           try {
-            final List<dynamic> daysList =
-                jsonDecode(data['dailyTasks'] as String? ?? '[]');
+            final daysList = parseRevisionPlanDailyTasks(data);
             final dayData = daysList.firstWhere((day) => day['date'] == dateKey,
                 orElse: () => null);
             if (dayData != null && dayData['tasks'] != null) {
+              final dayDate = DateTime.tryParse(dateKey);
               for (var task in dayData['tasks']) {
+                final taskMap = task is Map ? task : <String, dynamic>{};
                 dailyTaskWidgets.add(_buildTaskCard(
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
                   isCompleted: task['completed'] ?? false,
-                  isOverdue: _isDateBeforeToday(dateKey) &&
-                      (task['completed'] != true), // ADDED LOGIC
+                  isOverdue: !examPassed &&
+                      dayDate != null &&
+                      task is Map &&
+                      isRevisionTaskOverdue(dayDate, taskMap),
                   taskId: task['taskId'],
                   docId: doc.id,
                   fullDailyTasks: daysList,
@@ -589,7 +621,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final double itemWidth = (constraints.maxWidth - 16) / 2;
+            final useSingleColumn = constraints.maxWidth < 520;
+            final double itemWidth = useSingleColumn
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 16) / 2;
             return Wrap(
               spacing: 16,
               runSpacing: 16,

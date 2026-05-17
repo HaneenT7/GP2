@@ -1,6 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:health/health.dart' show HealthConnectSdkStatus;
+import 'package:gp2_watad/services/health_connect_service.dart';
 import 'signIn.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -25,10 +29,19 @@ class _ProfilePageState extends State<ProfilePage> {
   int _completedPlans = 0;
   double _successRate = 0;
 
+  final HealthConnectService _healthConnectService = HealthConnectService();
+  bool _healthBusy = false;
+  String? _healthStatus;
+  List<HeartRateReading> _heartRateReadings = [];
+  List<BloodPressureReading> _bloodPressureReadings = [];
+
   @override
   void initState() {
     super.initState();
     _loadUser();
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadHealthData());
+    }
   }
 
   Future<void> _loadUser() async {
@@ -136,32 +149,27 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             )
-          : LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 24,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - 48,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildProfileHeader(),
-                        const SizedBox(height: 24),
-                        _buildWeeklyActivityCard(),
-                        const SizedBox(height: 16),
-                        _buildSummaryCards(),
-                        const Spacer(),
-                        _buildLogOutButton(),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                ),
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildProfileHeader(),
+                  const SizedBox(height: 24),
+                  _buildWeeklyActivityCard(),
+                  const SizedBox(height: 16),
+                  _buildSummaryCards(),
+                  if (Platform.isAndroid) ...[
+                    const SizedBox(height: 16),
+                    _buildHealthConnectCard(),
+                  ],
+                  const SizedBox(height: 24),
+                  _buildLogOutButton(),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
     );
@@ -315,28 +323,43 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildSummaryCards() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildSummaryCard(
-            color: const Color(0xFF7C4DFF),
-            icon: Icons.assignment_outlined,
-            label: 'Completed Plans',
-            value: '$_completedPlans',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSummaryCard(
-            color: const Color(0xFF2196F3),
-            icon: Icons.rocket_launch_outlined,
-            label: 'Quiz Success Rate',
-            value: _successRate > 0
-                ? '${_successRate.toStringAsFixed(0)}%'
-                : 'No data yet',
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stackCards = constraints.maxWidth < 520;
+
+        final completedPlansCard = _buildSummaryCard(
+          color: const Color(0xFF7C4DFF),
+          icon: Icons.assignment_outlined,
+          label: 'Completed Plans',
+          value: '$_completedPlans',
+        );
+        final successRateCard = _buildSummaryCard(
+          color: const Color(0xFF2196F3),
+          icon: Icons.rocket_launch_outlined,
+          label: 'Quiz Success Rate',
+          value: _successRate > 0
+              ? '${_successRate.toStringAsFixed(0)}%'
+              : 'No data yet',
+        );
+
+        if (stackCards) {
+          return Column(
+            children: [
+              completedPlansCard,
+              const SizedBox(height: 16),
+              successRateCard,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: completedPlansCard),
+            const SizedBox(width: 16),
+            Expanded(child: successRateCard),
+          ],
+        );
+      },
     );
   }
 
@@ -384,6 +407,320 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
+  }
+
+  Widget _buildHealthConnectCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Health Connect',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1C1C1E),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'WATAD reads heart rate and blood pressure from Health Connect (including data shared by Samsung Health). '
+            'If Samsung Health has data but WATAD does not, enable sharing in Health Connect → App permissions → Samsung Health.',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+          ),
+          if (_healthStatus != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _healthStatus!,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+            ),
+          ],
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stackButtons = constraints.maxWidth < 520;
+              final grantAccessButton = FilledButton.icon(
+                onPressed: _healthBusy ? null : _connectHealthConnect,
+                icon: const Icon(Icons.link),
+                label: const Text('Grant access'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C4DFF),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              );
+              final loadHealthDataButton = OutlinedButton.icon(
+                onPressed: _healthBusy ? null : _loadHealthData,
+                icon: const Icon(Icons.monitor_heart_outlined),
+                label: const Text('Load health data'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C4DFF),
+                  side: const BorderSide(color: Color(0xFF7C4DFF)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              );
+              final openSettingsButton = OutlinedButton.icon(
+                onPressed: _healthBusy ? null : _openHealthConnectSettings,
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('Open Health Connect'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C4DFF),
+                  side: const BorderSide(color: Color(0xFF7C4DFF)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              );
+              final openSamsungHealthButton = OutlinedButton.icon(
+                onPressed: _healthBusy ? null : _openSamsungHealth,
+                icon: const Icon(Icons.health_and_safety_outlined),
+                label: const Text('Open Samsung Health'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C4DFF),
+                  side: const BorderSide(color: Color(0xFF7C4DFF)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              );
+
+              if (stackButtons) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    grantAccessButton,
+                    const SizedBox(height: 12),
+                    loadHealthDataButton,
+                    const SizedBox(height: 12),
+                    openSettingsButton,
+                    const SizedBox(height: 12),
+                    openSamsungHealthButton,
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: grantAccessButton),
+                      const SizedBox(width: 12),
+                      Expanded(child: loadHealthDataButton),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  openSettingsButton,
+                  const SizedBox(height: 12),
+                  openSamsungHealthButton,
+                ],
+              );
+            },
+          ),
+          if (_healthBusy) ...[
+            const SizedBox(height: 16),
+            const Center(child: CircularProgressIndicator()),
+          ],
+          if (_heartRateReadings.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Heart rate',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1C1C1E),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ..._heartRateReadings.take(10).map(_buildHeartRateRow),
+          ],
+          if (_bloodPressureReadings.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Blood pressure',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1C1C1E),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ..._bloodPressureReadings.take(10).map(_buildBloodPressureRow),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBloodPressureRow(BloodPressureReading reading) {
+    final time =
+        MaterialLocalizations.of(context).formatFullDate(reading.recordedAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bloodtype, color: Color(0xFF7C4DFF), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _healthConnectService.formatBloodPressure(reading),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                time,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _healthConnectService.formatSourceLabel(reading.source),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeartRateRow(HeartRateReading reading) {
+    final time = MaterialLocalizations.of(context).formatFullDate(reading.recordedAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.favorite, color: Color(0xFFE91E63), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _healthConnectService.formatHeartRate(reading),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                time,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${reading.type} • ${_healthConnectService.formatSourceLabel(reading.source)}',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connectHealthConnect() async {
+    setState(() {
+      _healthBusy = true;
+      _healthStatus = null;
+    });
+
+    try {
+      final status = await _healthConnectService.getSdkStatus();
+      if (status != HealthConnectSdkStatus.sdkAvailable) {
+        await _healthConnectService.openHealthConnectInstall();
+        setState(() {
+          _healthStatus =
+              'Install or update Health Connect, then tap Grant access again.';
+        });
+        return;
+      }
+
+      final granted = await _healthConnectService.requestHealthAccess();
+      setState(() {
+        _healthStatus = granted
+            ? 'Health Connect read access is enabled for WATAD (heart rate & blood pressure).'
+            : 'Permission was not granted. Open Health Connect and allow heart rate and blood pressure for WATAD.';
+      });
+      if (granted) {
+        await _loadHealthData();
+      }
+    } catch (e) {
+      setState(() {
+        _healthStatus = 'Could not connect to Health Connect: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _healthBusy = false);
+      }
+    }
+  }
+
+  Future<void> _loadHealthData() async {
+    setState(() {
+      _healthBusy = true;
+      _healthStatus = null;
+    });
+
+    try {
+      final hrResult = await _healthConnectService.fetchHeartRate();
+      final bpResult = await _healthConnectService.fetchBloodPressure();
+      final parts = <String>[
+        hrResult.statusMessage,
+        bpResult.statusMessage,
+      ];
+      setState(() {
+        _heartRateReadings = hrResult.readings;
+        _bloodPressureReadings = bpResult.readings;
+        _healthStatus = parts.join(' ');
+      });
+    } catch (e) {
+      setState(() {
+        _heartRateReadings = [];
+        _bloodPressureReadings = [];
+        _healthStatus = 'Could not load health data: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _healthBusy = false);
+      }
+    }
+  }
+
+  Future<void> _openHealthConnectSettings() async {
+    try {
+      await _healthConnectService.openHealthConnectPermissions();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthStatus = 'Could not open Health Connect settings: $e';
+      });
+    }
+  }
+
+  Future<void> _openSamsungHealth() async {
+    try {
+      await _healthConnectService.openSamsungHealth();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthStatus = 'Could not open Samsung Health: $e';
+      });
+    }
   }
 
   Widget _buildLogOutButton() {

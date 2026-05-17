@@ -4,7 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 class SudokuGamePage extends StatefulWidget {
-  const SudokuGamePage({super.key});
+  final VoidCallback onExit;
+  const SudokuGamePage({super.key, required this.onExit});
   @override
   State<SudokuGamePage> createState() => _SudokuGamePageState();
 }
@@ -27,7 +28,11 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
   }
 
   Future<void> _fetchSudoku() async {
-    setState(() { _isLoading = true; _hasError = false; _isComplete = false; });
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _isComplete = false;
+    });
     try {
       final response = await http.get(
         Uri.parse('https://shadify.yurace.pro/api/sudoku/generator?fill=30'),
@@ -38,35 +43,51 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
         final taskRaw = data['task'] as List;
         final gridRaw = data['grid'] as List;
 
-        final puzzle = taskRaw.map<List<int>>((row) =>
-          (row as List).map<int>((e) => e as int).toList()).toList();
-        final solution = gridRaw.map<List<int>>((row) =>
-          (row as List).map<int>((e) => e as int).toList()).toList();
+        final puzzle = taskRaw
+            .map<List<int>>(
+                (row) => (row as List).map<int>((e) => e as int).toList())
+            .toList();
+        final solution = gridRaw
+            .map<List<int>>(
+                (row) => (row as List).map<int>((e) => e as int).toList())
+            .toList();
 
         setState(() {
           _puzzle = puzzle;
           _solution = solution;
           _userInput = puzzle.map((row) => List<int>.from(row)).toList();
-          _isOriginal = puzzle.map((row) => row.map((e) => e != 0).toList()).toList();
+          _isOriginal =
+              puzzle.map((row) => row.map((e) => e != 0).toList()).toList();
           _isLoading = false;
         });
       } else {
-        setState(() { _hasError = true; _isLoading = false; });
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      setState(() { _hasError = true; _isLoading = false; });
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
     }
   }
 
   void _onCellTap(int row, int col) {
     if (_isOriginal[row][col]) return;
-    setState(() { _selectedRow = row; _selectedCol = col; });
+    setState(() {
+      _selectedRow = row;
+      _selectedCol = col;
+    });
   }
 
   void _onNumberPress(int number) {
     if (_selectedRow == null || _selectedCol == null) return;
     if (_isOriginal[_selectedRow!][_selectedCol!]) return;
-    setState(() { _userInput[_selectedRow!][_selectedCol!] = number; });
+    setState(() {
+      _userInput[_selectedRow!][_selectedCol!] = number;
+    });
     _checkComplete();
   }
 
@@ -76,34 +97,45 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
         if (_userInput[r][c] != _solution[r][c]) return;
       }
     }
-    setState(() { _isComplete = true; });
+    setState(() {
+      _isComplete = true;
+    });
   }
 
   Color _cellColor(int row, int col) {
-    if (_selectedRow == row && _selectedCol == col) return const Color(0xFF64B5F6);
+    if (_selectedRow == row && _selectedCol == col)
+      return const Color(0xFF64B5F6);
     if (_selectedRow != null && _selectedCol != null) {
-      if (_selectedRow == row || _selectedCol == col) return const Color(0xFFBBDEFB);
+      if (_selectedRow == row || _selectedCol == col)
+        return const Color(0xFFBBDEFB);
       final boxRow = (_selectedRow! ~/ 3) * 3;
       final boxCol = (_selectedCol! ~/ 3) * 3;
-      if (row >= boxRow && row < boxRow + 3 && col >= boxCol && col < boxCol + 3) {
+      if (row >= boxRow &&
+          row < boxRow + 3 &&
+          col >= boxCol &&
+          col < boxCol + 3) {
         return const Color(0xFFBBDEFB);
       }
     }
-    return (row ~/ 3 + col ~/ 3) % 2 == 0 ? const Color(0xFF1C1C1E) : const Color(0xFF2C2C2E);
+    return (row ~/ 3 + col ~/ 3) % 2 == 0
+        ? const Color(0xFF1C1C1E)
+        : const Color(0xFF2C2C2E);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
+    return Container(
+      color: Colors.white,
+      child: Column(
         children: [
           _buildTopBar(context),
           const Divider(height: 1),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _hasError ? _buildError() : _buildGame(),
+                : _hasError
+                    ? _buildError()
+                    : _buildGame(),
           ),
         ],
       ),
@@ -118,12 +150,18 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, size: 24), // تغيير السهم إلى إكس
+              onPressed: widget.onExit, // استدعاء دالة الخروج التي مررناها
             ),
-            Text('Sudoku', style: GoogleFonts.iceland(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF1C1C1E))),
+            Text('Sudoku',
+                style: GoogleFonts.iceland(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1C1C1E))),
             const Spacer(),
-            IconButton(icon: const Icon(Icons.refresh_rounded, size: 24), onPressed: _fetchSudoku),
+            IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 24),
+                onPressed: _fetchSudoku),
           ],
         ),
       ),
@@ -160,11 +198,17 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-      decoration: BoxDecoration(color: const Color(0xFF4CAF50), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF4CAF50),
+          borderRadius: BorderRadius.circular(12)),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         const Icon(Icons.emoji_events, color: Colors.white),
         const SizedBox(width: 8),
-        Text('Puzzle Complete! 🎉', style: GoogleFonts.iceland(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
+        Text('Puzzle Complete! 🎉',
+            style: GoogleFonts.iceland(
+                fontSize: 24,
+                color: Colors.white,
+                fontWeight: FontWeight.bold)),
       ]),
     );
   }
@@ -184,28 +228,40 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(9, (col) {
                   final value = _userInput[row][col];
-                  final isWrong = value != 0 && !_isOriginal[row][col] && value != _solution[row][col];
+                  final isWrong = value != 0 &&
+                      !_isOriginal[row][col] &&
+                      value != _solution[row][col];
                   return GestureDetector(
                     onTap: () => _onCellTap(row, col),
                     child: Container(
-                      width: 44, height: 44,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
                         color: _cellColor(row, col),
                         border: Border(
                           right: col == 2 || col == 5
-                              ? const BorderSide(color: Color(0xFF64B5F6), width: 2)
-                              : BorderSide(color: Colors.grey.shade700, width: 0.5),
+                              ? const BorderSide(
+                                  color: Color(0xFF64B5F6), width: 2)
+                              : BorderSide(
+                                  color: Colors.grey.shade700, width: 0.5),
                           bottom: row == 2 || row == 5
-                              ? const BorderSide(color: Color(0xFF64B5F6), width: 2)
-                              : BorderSide(color: Colors.grey.shade700, width: 0.5),
+                              ? const BorderSide(
+                                  color: Color(0xFF64B5F6), width: 2)
+                              : BorderSide(
+                                  color: Colors.grey.shade700, width: 0.5),
                         ),
                       ),
                       child: Center(
                         child: Text(
                           value == 0 ? '' : value.toString(),
                           style: GoogleFonts.iceland(
-                            fontSize: 22, fontWeight: FontWeight.bold,
-                            color: isWrong ? Colors.red : _isOriginal[row][col] ? const Color(0xFFFF9800) : const Color(0xFF64B5F6),
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: isWrong
+                                ? Colors.red
+                                : _isOriginal[row][col]
+                                    ? const Color(0xFFFF9800)
+                                    : const Color(0xFF64B5F6),
                           ),
                         ),
                       ),
@@ -222,8 +278,13 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
 
   Widget _buildNumberPad() {
     return Wrap(
-      spacing: 8, runSpacing: 8, alignment: WrapAlignment.center,
-      children: [...List.generate(9, (i) => _numButton(i + 1)), _numButton(0, label: '✕')],
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: [
+        ...List.generate(9, (i) => _numButton(i + 1)),
+        _numButton(0, label: '✕')
+      ],
     );
   }
 
@@ -231,7 +292,8 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
     return GestureDetector(
       onTap: () => _onNumberPress(number),
       child: Container(
-        width: 52, height: 52,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(10),
@@ -240,7 +302,10 @@ class _SudokuGamePageState extends State<SudokuGamePage> {
         child: Center(
           child: Text(
             label ?? number.toString(),
-            style: GoogleFonts.iceland(fontSize: 26, fontWeight: FontWeight.bold, color: number == 0 ? Colors.red : Colors.white),
+            style: GoogleFonts.iceland(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: number == 0 ? Colors.red : Colors.white),
           ),
         ),
       ),

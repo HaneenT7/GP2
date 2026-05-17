@@ -164,7 +164,6 @@ class RevisionPlanService {
       });
     });
   }
-
   // ─────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────
@@ -172,7 +171,7 @@ class RevisionPlanService {
   String generateRequestId() {
     final u = _userId ?? 'anon';
     final t = DateTime.now().millisecondsSinceEpoch;
-    return '${u.substring(0, u.length > 8 ? 8 : u.length)}_$t';
+    return '${u}_$t';
   }
 
   /// Old combined method — kept for backwards compatibility.

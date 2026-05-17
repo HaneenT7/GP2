@@ -6,30 +6,43 @@ import 'math_lab_game_page.dart';
 import 'memory_game_page.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
 
-class BrainGamesPage extends StatelessWidget {
+class BrainGamesPage extends StatefulWidget {
   const BrainGamesPage({super.key});
 
+  @override
+  State<BrainGamesPage> createState() => _BrainGamesPageState();
+}
+
+class _BrainGamesPageState extends State<BrainGamesPage> {
   static const _navBarHeight = 56.0;
   static const _mutedIconColor = Color(0xFF8B9AAB);
 
   static const TextStyle _titleStyle = TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-        color: Color(0xFF1C1C1E),
-      );
+    fontSize: 24,
+    fontWeight: FontWeight.bold,
+    color: Color(0xFF1C1C1E),
+  );
 
- @override
+  // المتغير الذي سيحدد اللعبة المعروضة حالياً
+  Widget? _selectedGameWidget;
+
+  @override
   Widget build(BuildContext context) {
+    // إذا اختار المستخدم لعبة، تظهر هي بدلاً من قائمة الكروت ليبقى السايد بار ظاهراً
+    if (_selectedGameWidget != null) {
+      return _selectedGameWidget!;
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(
         children: [
-
           Expanded(
             child: Stack(
               children: [
                 SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -51,7 +64,8 @@ class BrainGamesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTopBar() {//
+  Widget _buildTopBar() {
+    //
     return SizedBox(
       height: _navBarHeight,
       child: Padding(
@@ -110,11 +124,12 @@ class BrainGamesPage extends StatelessWidget {
         cardColor: const Color(0xFFFFF8E1),
         borderColor: const Color(0xFFE6D98A),
         child: _buildPreviewImage('assets/images/search_words_preview.png'),
-        // 👇 تعديل هنا فقط: أضفنا onPressed
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const WordSearchGamePage()),
-        ),
+        // 👇 التعديل لكل الألعاب مع تمرير دالة الخروج
+        onPressed: () => setState(() {
+          _selectedGameWidget = WordSearchGamePage(
+            onExit: () => setState(() => _selectedGameWidget = null),
+          );
+        }),
       ),
       _GameCardData(
         title: 'Sudoku',
@@ -122,10 +137,11 @@ class BrainGamesPage extends StatelessWidget {
         cardColor: const Color(0xFFE8F5E9),
         borderColor: const Color(0xFFA5D6A7),
         child: _buildPreviewImage('assets/images/sudoku_preview.png'),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SudokuGamePage()),
-        ),
+        onPressed: () => setState(() {
+          _selectedGameWidget = SudokuGamePage(
+            onExit: () => setState(() => _selectedGameWidget = null),
+          );
+        }),
       ),
       _GameCardData(
         title: 'Math lab',
@@ -136,10 +152,11 @@ class BrainGamesPage extends StatelessWidget {
           'assets/images/math_lab_preview.png',
           _buildMathLabPreview(),
         ),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MathLabGamePage()),
-        ),
+        onPressed: () => setState(() {
+          _selectedGameWidget = MathLabGamePage(
+            onExit: () => setState(() => _selectedGameWidget = null),
+          );
+        }),
       ),
       _GameCardData(
         title: 'Memory',
@@ -150,10 +167,11 @@ class BrainGamesPage extends StatelessWidget {
           'assets/images/memory_preview.png',
           _buildMemoryPreview(),
         ),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MemoryGamePage()),
-        ),
+        onPressed: () => setState(() {
+          _selectedGameWidget = MemoryGamePage(
+            onExit: () => setState(() => _selectedGameWidget = null),
+          );
+        }),
       ),
     ];
 
@@ -251,8 +269,10 @@ class BrainGamesPage extends StatelessWidget {
 
   Widget _buildMemoryPreview() {
     final colors = [
-      const Color(0xFF4CAF50), const Color(0xFF2196F3),
-      const Color(0xFFFF9800), const Color(0xFF9C27B0),
+      const Color(0xFF4CAF50),
+      const Color(0xFF2196F3),
+      const Color(0xFFFF9800),
+      const Color(0xFF9C27B0),
     ];
     return Container(
       padding: const EdgeInsets.all(12),
@@ -273,10 +293,14 @@ class BrainGamesPage extends StatelessWidget {
           final isFlipped = i < 2;
           return Container(
             decoration: BoxDecoration(
-              color: isFlipped ? colors[i % colors.length] : const Color(0xFF2C2C2E),
+              color: isFlipped
+                  ? colors[i % colors.length]
+                  : const Color(0xFF2C2C2E),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: isFlipped ? colors[i % colors.length] : const Color(0xFF64B5F6),
+                color: isFlipped
+                    ? colors[i % colors.length]
+                    : const Color(0xFF64B5F6),
                 width: 1.5,
               ),
             ),
@@ -432,7 +456,8 @@ class _StartButton extends StatelessWidget {
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
                   decoration: BoxDecoration(
                     color: const Color(0xFF64B5F6),
                     borderRadius: BorderRadius.circular(24),

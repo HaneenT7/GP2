@@ -101,7 +101,10 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => QuizPage(quiz: quiz),
+          builder: (_) => QuizPage(
+            quiz: quiz,
+            onExit: () => Navigator.pop(context),
+          ),
         ),
       );
     } catch (e) {

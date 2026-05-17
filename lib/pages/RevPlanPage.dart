@@ -244,9 +244,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         List<dynamic> dailyTasks = [];
         if (rawTasks is String) {
           try {
-final List dailyTasks = rawTasks is String 
-        ? jsonDecode(rawTasks) 
-        : (rawTasks as List);
+          dailyTasks= jsonDecode(rawTasks);
             } catch (e) {print("Error decoding tasks: $e");}
         } else if (rawTasks is List) {
           dailyTasks = rawTasks;

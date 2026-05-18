@@ -2,10 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz_data; 
+import 'package:flutter/material.dart'; 
 
 // Handles background messages (must be top-level function, not inside a class)
 @pragma('vm:entry-point')
@@ -19,64 +16,8 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  static final _localPlugin = FlutterLocalNotificationsPlugin();
-
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   OverlayEntry? _fcmToastEntry;
-
-  /// Local exam reminders (used by [ExamNotificationScheduler]).
-  static Future<void> init() async {
-    tz_data.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
-
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    await _localPlugin.initialize(
-      settings: const InitializationSettings(android: android),
-    );
-
-    await _localPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-  }
-
-  static Future<void> scheduleExamReminder({
-    required int id,
-    required String courseName,
-    required DateTime examDate,
-  }) async {
-    final reminderDate = examDate.subtract(const Duration(days: 1));
-    final now = DateTime.now();
-    if (reminderDate.isBefore(now)) return;
-
-    final scheduledTime = tz.TZDateTime(
-      tz.local,
-      reminderDate.year,
-      reminderDate.month,
-      reminderDate.day,
-      8,
-      16,
-    );
-
-    await _localPlugin.zonedSchedule(
-      id: id,
-      title: '⏰ Exam Reminder',
-      body:
-          'Your $courseName exam is tomorrow. Review your notes and get some rest! 📚',
-      scheduledDate: scheduledTime,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'exam_reminders',
-          'Exam Reminders',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
-  }
-
-  static Future<void> cancelAll() async => _localPlugin.cancelAll();
 
   /// Call this once from main.dart before runApp()
   static Future<void> initBackgroundHandler() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gp2_watad/services/notification_service.dart'; // تم نقل هذا الإستيراد من الملف الثاني
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
@@ -11,7 +12,6 @@ import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
 import 'quiz_page.dart';
-import '../services/exam_notification_scheduler.dart';
 import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
 import '../services/task_quiz_service.dart';
@@ -30,6 +30,16 @@ class _DashBoardState extends State<DashBoard> {
   void initState() {
     super.initState();
     ExamNotificationScheduler.scheduleAll();
+
+    // ── شغلِك: تهيئة الإشعارات السحابية بعد بناء الإطار ──
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(seconds: 1));
+      try {
+        await NotificationService().initialize(context);
+      } catch (e) {
+        debugPrint('❌ [DashBoard] Error during notification initialization: $e');
+      }
+    });
   }
 
   // Same order as IndexedStack children
@@ -109,7 +119,10 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
+  // ── شغلِك: بناء الـ TopBar مع الـ StreamBuilder لقراءة النقطة الحمراء (Badge) ──
   Widget _buildTopBar() {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
@@ -124,14 +137,52 @@ class _DashBoardState extends State<DashBoard> {
               letterSpacing: -0.3,
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            color: const Color(0xFF553C76),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsPage()),
+          if (user != null)
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: user.uid)
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final hasUnread =
+                    snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_outlined),
+                      color: const Color(0xFF553C76),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const NotificationsPage()),
+                      ),
+                    ),
+                    if (hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              color: const Color(0xFF553C76),
+              onPressed: () {},
             ),
-          ),
         ],
       ),
     );
@@ -559,6 +610,41 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
+  // ── نقل دالة المساعدة لمعرفة التواريخ السابقة من الملف الثاني لخدمة حساب الـ Overdue ──
+  bool _isDateBeforeToday(String dateKey) {
+    final d = DateTime.tryParse(dateKey);
+    if (d == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final day = DateTime(d.year, d.month, d.day);
+    return day.isBefore(today);
+  }
+
+  // ── شغلِك: Stream يجيب كل تواريخ الاختبارات للطالب لوضع النجمة الحمراء ──
+  Stream<Set<String>> _examDatesStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Stream.value({});
+    return FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map((snapshot) {
+      final Set<String> examDates = {};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final raw =
+            data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
+        DateTime? date;
+        if (raw is Timestamp) date = raw.toDate();
+        if (raw is String) date = DateTime.tryParse(raw);
+        if (date != null) {
+          examDates.add(DateFormat('yyyy-MM-dd').format(date));
+        }
+      }
+      return examDates;
+    });
+  }
+
   void _jumpToFirstOverdueDay(Iterable<QueryDocumentSnapshot> planDocs) {
     DateTime? first;
     for (final doc in planDocs) {
@@ -605,7 +691,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         const SizedBox(height: 20),
         _buildDaysBar(),
         const SizedBox(height: 12),
-        _buildOverdueInfoBar(dateKey), // ADDED FROM TEAMMATE
+        _buildOverdueInfoBar(dateKey),
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
@@ -702,10 +788,28 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           return _buildNoTasksPlaceholder("No revision plans found.");
 
         List<Widget> dailyTaskWidgets = [];
+        List<Widget> examCardWidgets = []; // ── شغلِك: لتخزين بطاقات الـ Good Luck ──
+
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
           final examPassed = isRevisionPlanExamPassed(data);
           final materialTitle = data['materialTitle']?.toString();
+
+          // ── شغلِك: تحقق إذا اليوم المحدد فيه اختبار لهذا الكورس لحقن البطاقة الوردية ──
+          try {
+            final raw = data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
+            DateTime? examDate;
+            if (raw is Timestamp) examDate = raw.toDate();
+            if (raw is String) examDate = DateTime.tryParse(raw);
+            if (examDate != null) {
+              final examDateKey = DateFormat('yyyy-MM-dd').format(examDate);
+              if (examDateKey == dateKey) {
+                final folderName = (data['folderName'] as String? ?? 'Course').toUpperCase();
+                examCardWidgets.add(_buildExamCard(folderName));
+              }
+            }
+          } catch (_) {}
+
           try {
             final daysList = parseRevisionPlanDailyTasks(data);
             final dayDate = DateTime.tryParse(dateKey);
@@ -737,7 +841,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty)
+        if (dailyTaskWidgets.isEmpty && examCardWidgets.isEmpty)
           return _buildNoTasksPlaceholder("Relax! No tasks for today.");
 
         return LayoutBuilder(
@@ -746,12 +850,24 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             final double itemWidth = useSingleColumn
                 ? constraints.maxWidth
                 : (constraints.maxWidth - 16) / 2;
-            return Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: dailyTaskWidgets
-                  .map((widget) => SizedBox(width: itemWidth, child: widget))
-                  .toList(),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── شغلِك: حقن بطاقات الاختبار الوردية لتظهر فوق كاملة العرض ──
+                ...examCardWidgets.map((w) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: w,
+                )),
+                // باقي المهام في شبكة (شغل زميلتك المتجاوب)
+                if (dailyTaskWidgets.isNotEmpty)
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: dailyTaskWidgets
+                        .map((widget) => SizedBox(width: itemWidth, child: widget))
+                        .toList(),
+                  ),
+              ],
             );
           },
         );
@@ -1041,6 +1157,43 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     }
   }
 
+  // ── شغلِك: تابع لكارت الـ Good luck الوردي المنقول من الملف الثاني ──
+  Widget _buildExamCard(String folderName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDFA4C0), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Text('🍀', style: TextStyle(fontSize: 28)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$folderName EXAM',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Good luck!',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNoTasksPlaceholder(String message) {
     return Container(
       width: double.infinity,
@@ -1079,58 +1232,97 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     );
   }
 
+  // ── شغلِك: شريط الأيام مع الـ StreamBuilder لوضع النجمة الحمراء عند وجود اختبار ──
   Widget _buildDaysBar() {
-    return Row(
-        children: List.generate(
-      _weekDates.length,
-      (index) {
-        final date = _weekDates[index];
-        final isSelected = index == _selectedDayIndex;
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: InkWell(
-              onTap: () => setState(() => _selectedDayIndex = index),
-              child: Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF9333EA)
-                        : Colors.grey[300]!,
-                    width: isSelected ? 2 : 1,
+    return StreamBuilder<Set<String>>(
+      stream: _examDatesStream(),
+      builder: (context, snapshot) {
+        final examDates = snapshot.data ?? {};
+        return Row(
+          children: List.generate(_weekDates.length, (index) {
+            final date = _weekDates[index];
+            final isSelected = index == _selectedDayIndex;
+            final dateKey = DateFormat('yyyy-MM-dd').format(date);
+            final hasExam = examDates.contains(dateKey);
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: InkWell(
+                  onTap: () => setState(() => _selectedDayIndex = index),
+                  child: Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFF3E8FF)
+                          : Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF9333EA)
+                            : Colors.grey[300]!,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                DateFormat('E').format(date),
+                                style: TextStyle(
+                                    color: isSelected
+                                        ? const Color(0xFF7C3AED)
+                                        : Colors.black87,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                DateFormat('d').format(date),
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // النجمة الحمراء إذا فيه اختبار في هذا اليوم
+                        if (hasExam)
+                          const Positioned(
+                            top: 4,
+                            left: 6,
+                            child: Text(
+                              '*',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(DateFormat('E').format(date),
-                        style: TextStyle(
-                            color: isSelected
-                                ? const Color(0xFF7C3AED)
-                                : Colors.black87,
-                            fontWeight: FontWeight.bold)),
-                    Text(DateFormat('d').format(date),
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
               ),
-            ),
-          ),
+            );
+          }),
         );
       },
-    ));
+    );
   }
 }
 
+// ── شغلِك: صفحة الإشعارات الكاملة والمتصلة بـ Firestore المنسوخة من الملف الثاني ──
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1145,18 +1337,108 @@ class NotificationsPage extends StatelessWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.notifications_none_outlined,
-                size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text('No notifications yet',
-                style: TextStyle(fontSize: 18, color: Colors.grey[500])),
-          ],
-        ),
-      ),
+      body: user == null
+          ? const Center(child: Text('Please sign in.'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: user.uid)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_none_outlined,
+                            size: 64, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text('No notifications yet',
+                            style: TextStyle(
+                                fontSize: 18, color: Colors.grey[500])),
+                      ],
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final bool isRead = data['isRead'] ?? false;
+                    final Timestamp? ts = data['createdAt'] as Timestamp?;
+                    final String timeAgo =
+                        ts != null ? _formatTime(ts.toDate()) : '';
+
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      leading: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isRead
+                              ? Colors.grey[100]
+                              : const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.school_outlined,
+                          color: isRead ? Colors.grey : const Color(0xFF7C3AED),
+                          size: 22,
+                        ),
+                      ),
+                      title: Text(
+                        data['title'] ?? '',
+                        style: TextStyle(
+                          fontWeight:
+                              isRead ? FontWeight.normal : FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(data['body'] ?? '',
+                              style: const TextStyle(fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(timeAgo,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[400])),
+                        ],
+                      ),
+                      onTap: () {
+                        if (!isRead) {
+                          docs[index].reference.update({'isRead': true});
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
     );
+  }
+
+  String _formatTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 }

@@ -24,7 +24,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await NotificationService.init();
+
   await NotificationService.initBackgroundHandler();
 
   await dotenv.load(fileName: ".env");

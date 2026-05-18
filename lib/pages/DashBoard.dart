@@ -29,7 +29,7 @@ class _DashBoardState extends State<DashBoard> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 1));
       try {
-        await NotificationService().initialize();
+        await NotificationService().initialize(context);
       } catch (e) {
         debugPrint('❌ [DashBoard] Error during notification initialization: $e');
       }

@@ -24,8 +24,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  await NotificationService.initBackgroundHandler();
+
   await dotenv.load(fileName: ".env");
-  await NotificationService.init();
   runApp(const MyApp());
 }
 

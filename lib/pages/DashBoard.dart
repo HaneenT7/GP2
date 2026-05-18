@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gp2_watad/services/notification_service.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
@@ -10,7 +11,6 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
-import '../services/exam_notification_scheduler.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -25,10 +25,17 @@ class _DashBoardState extends State<DashBoard> {
   @override
   void initState() {
     super.initState();
-    ExamNotificationScheduler.scheduleAll();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(seconds: 1));
+      try {
+        await NotificationService().initialize(context);
+      } catch (e) {
+        debugPrint('❌ [DashBoard] Error during notification initialization: $e');
+      }
+    });
   }
 
-  // Same order as IndexedStack children
   static const _pageTitles = [
     'Dashboard',
     'Course Folder',
@@ -42,7 +49,7 @@ class _DashBoardState extends State<DashBoard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F2F8), // off-white lavender base
+      backgroundColor: const Color(0xFFF4F2F8),
       body: Row(
         children: [
           CustomSidebar(
@@ -55,10 +62,8 @@ class _DashBoardState extends State<DashBoard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Transparent topbar — part of the frame layer
                   _buildTopBar(),
                   const SizedBox(height: 16),
-                  // The floating white island
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -104,34 +109,74 @@ class _DashBoardState extends State<DashBoard> {
       ),
     );
   }
+Widget _buildTopBar() {
+  final user = FirebaseAuth.instance.currentUser;
 
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            _pageTitles[_selectedIndex], // ← dynamic title
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF2D1F3D),
-              letterSpacing: -0.3,
-            ),
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          _pageTitles[_selectedIndex],
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF2D1F3D),
+            letterSpacing: -0.3,
           ),
+        ),
+        if (user != null)
+          StreamBuilder<QuerySnapshot>(
+            // الاستماع فقط للإشعارات غير المقروءة الخاصة بهذا المستخدم
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('userId', isEqualTo: user.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              // التحقق مما إذا كان هناك أي إشعار غير مقروء
+              final hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    color: const Color(0xFF553C76),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                    ),
+                  ),
+                  // إذا وجد إشعار غير مقروء، نظهر النقطة الحمراء الصغيرة في الزاوية
+                  if (hasUnread)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          )
+        else
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
             color: const Color(0xFF553C76),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsPage()),
-            ),
+            onPressed: () {},
           ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 }
 
 class DashboardHomeContent extends StatelessWidget {
@@ -201,7 +246,6 @@ class _GreetingWidgetState extends State<GreetingWidget> {
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});
 
-  // Helper methods moved inside the class so it's self-contained
   DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
     final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
     if (raw is Timestamp) return raw.toDate();
@@ -389,7 +433,6 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
     _index = _seedIndexForToday();
   }
 
-  /// Stable pick per calendar day so the “daily” message refreshes naturally each day.
   int _seedIndexForToday() {
     final n = DateTime.now();
     final dayKey = n.year * 10000 + n.month * 100 + n.day;
@@ -420,8 +463,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -479,8 +521,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
                       bottom: -5,
                       child: Icon(Icons.psychology,
                           size: 40,
-                          color: const Color(0xFF7C3AED)
-                              .withValues(alpha: 0.3))),
+                          color: const Color(0xFF7C3AED).withValues(alpha: 0.3))),
                 ],
               ),
             ),
@@ -554,7 +595,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         const SizedBox(height: 20),
         _buildDaysBar(),
         const SizedBox(height: 12),
-        _buildOverdueInfoBar(dateKey), // ADDED FROM TEAMMATE
+        _buildOverdueInfoBar(dateKey),
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
@@ -571,8 +612,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox.shrink();
+        }
 
         int overdueOnSelectedDay = 0;
         int totalOverdue = 0;
@@ -638,17 +680,17 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return _buildNoTasksPlaceholder("No revision plans found.");
+        }
 
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          // Extract the material title we saved in n8n
-          final String pdfName = data['materialTitle'] ?? 'Study Material'; 
-          
+
           try {
             final List<dynamic> daysList =
                 jsonDecode(data['dailyTasks'] as String? ?? '[]');
@@ -665,7 +707,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
                   pdfName: task['fileName'] ?? 'General',
-                  pages: task['pages']?.toString() ?? '', // Passed Pages
+                  pages: task['pages']?.toString() ?? '',
                   isCompleted: task['completed'] ?? false,
                   isOverdue: _isDateBeforeToday(dateKey) &&
                       (task['completed'] != true),
@@ -679,8 +721,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty)
+        if (dailyTaskWidgets.isEmpty) {
           return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+        }
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -701,10 +744,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   Widget _buildTaskCard({
     required String title,
     required String folder,
-    required String pdfName, 
-    required String pages, 
+    required String pdfName,
+    required String pages,
     required bool isCompleted,
-    required bool isOverdue, 
+    required bool isOverdue,
     required String taskId,
     required String docId,
     required List fullDailyTasks,
@@ -725,15 +768,16 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start, // Align top for multi-line
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
             onTap: () async {
               for (var day in fullDailyTasks) {
                 if (day['date'] == dateKey) {
                   for (var t in day['tasks']) {
-                    if (t['taskId'] == taskId)
+                    if (t['taskId'] == taskId) {
                       t['completed'] = !(t['completed'] ?? false);
+                    }
                   }
                 }
               }
@@ -762,34 +806,40 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                     decoration: isCompleted ? TextDecoration.lineThrough : null,
                     color: isCompleted
                         ? Colors.green.shade700
-                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
+                        : (isOverdue
+                            ? Colors.deepOrange.shade900
+                            : Colors.black87),
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Displaying Folder and PDF Name
                 Text(
-                    '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
-                    style: TextStyle(
+                  '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
+                  style: TextStyle(
                     fontSize: 11,
-                    color: isCompleted ? Colors.green.shade400 : Colors.grey.shade600,
+                    color: isCompleted
+                        ? Colors.green.shade400
+                        : Colors.grey.shade600,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                // Displaying Page Numbers and Status
                 Row(
                   children: [
                     if (pages.isNotEmpty) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           'pp. $pages',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -900,6 +950,8 @@ class NotificationsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -914,18 +966,108 @@ class NotificationsPage extends StatelessWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.notifications_none_outlined,
-                size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text('No notifications yet',
-                style: TextStyle(fontSize: 18, color: Colors.grey[500])),
-          ],
-        ),
-      ),
+      body: user == null
+          ? const Center(child: Text('Please sign in.'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: user.uid)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_none_outlined,
+                            size: 64, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text('No notifications yet',
+                            style: TextStyle(
+                                fontSize: 18, color: Colors.grey[500])),
+                      ],
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final bool isRead = data['isRead'] ?? false;
+                    final Timestamp? ts = data['createdAt'] as Timestamp?;
+                    final String timeAgo =
+                        ts != null ? _formatTime(ts.toDate()) : '';
+
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      leading: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isRead
+                              ? Colors.grey[100]
+                              : const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.school_outlined,
+                          color: isRead ? Colors.grey : const Color(0xFF7C3AED),
+                          size: 22,
+                        ),
+                      ),
+                      title: Text(
+                        data['title'] ?? '',
+                        style: TextStyle(
+                          fontWeight:
+                              isRead ? FontWeight.normal : FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(data['body'] ?? '',
+                              style: const TextStyle(fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(timeAgo,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[400])),
+                        ],
+                      ),
+                      onTap: () {
+                        if (!isRead) {
+                          docs[index].reference.update({'isRead': true});
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
     );
+  }
+
+  String _formatTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 }

@@ -23,12 +23,10 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     color: Color(0xFF1C1C1E),
   );
 
-  // المتغير الذي سيحدد اللعبة المعروضة حالياً
   Widget? _selectedGameWidget;
 
   @override
   Widget build(BuildContext context) {
-    // إذا اختار المستخدم لعبة، تظهر هي بدلاً من قائمة الكروت ليبقى السايد بار ظاهراً
     if (_selectedGameWidget != null) {
       return _selectedGameWidget!;
     }
@@ -40,21 +38,21 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
           Expanded(
             child: Stack(
               children: [
+                // FIXED: Normal vertical scrolling view to view wrapped dynamic grid layouts cleanly
                 SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildGameCards(context),
-                      const SizedBox(height: 200),
+                      const SizedBox(height: 140), // Slightly minimized vertical space padding safely
                     ],
                   ),
                 ),
                 Positioned(
                   right: 24,
                   bottom: 24,
-                  child: _buildBrainIllustration(context),
+                  child: IgnorePointer(child: _buildBrainIllustration(context)), // Added IgnorePointer to prevent background block interaction issues
                 ),
               ],
             ),
@@ -65,7 +63,6 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
   }
 
   Widget _buildTopBar() {
-    //
     return SizedBox(
       height: _navBarHeight,
       child: Padding(
@@ -73,7 +70,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
+            const Text(
               'brain games',
               style: TextStyle(
                 fontSize: 16,
@@ -84,12 +81,12 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.code, size: 24, color: _mutedIconColor),
+                const Icon(Icons.code, size: 24, color: _mutedIconColor),
                 const SizedBox(width: 20),
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.notifications_outlined,
                       size: 24,
                       color: _mutedIconColor,
@@ -124,7 +121,6 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
         cardColor: const Color(0xFFFFF8E1),
         borderColor: const Color(0xFFE6D98A),
         child: _buildPreviewImage('assets/images/search_words_preview.png'),
-        // 👇 التعديل لكل الألعاب مع تمرير دالة الخروج
         onPressed: () => setState(() {
           _selectedGameWidget = WordSearchGamePage(
             onExit: () => setState(() => _selectedGameWidget = null),
@@ -175,27 +171,21 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
       ),
     ];
 
-    const cardWidth = 258.0;
-    const cardHeight = 362.0;
-    const cardSpacing = 16.0;
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: cards
-            .map(
-              (d) => Padding(
-                padding: const EdgeInsets.only(right: cardSpacing),
-                child: _GameCard(
-                  data: d,
-                  width: cardWidth,
-                  height: cardHeight,
-                ),
-              ),
-            )
-            .toList(),
+    // FIXED: Removed the Horizontal SingleChildScrollView Row architecture entirely. 
+    // Replaced with a GridView setup that automatically shapes column amounts based on screen spaces safely.
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(), // Disables inner grid scrolling so it scrolls naturally with main view body
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 260, // Maximum target width threshold for cards before fracturing rows
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.72, // Balanced vertical layout calculation width vs height proportion alignment
       ),
+      itemCount: cards.length,
+      itemBuilder: (context, index) {
+        return _GameCard(data: cards[index]);
+      },
     );
   }
 
@@ -221,7 +211,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     );
   }
 
-  static const double _previewFontSize = 32;
+  static const double _previewFontSize = 24; // Lowered slightly from 32 to handle squishing responsive behaviors beautifully
 
   Widget _buildMathLabPreview() {
     const problems = [
@@ -243,21 +233,15 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
           children: problems
               .map(
                 (p) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '${p.$1} __',
-                        style: GoogleFonts.iceland(
-                          fontSize: _previewFontSize,
-                          fontWeight: FontWeight.w600,
-                          color: p.$2,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    '${p.$1} __',
+                    style: GoogleFonts.iceland(
+                      fontSize: _previewFontSize,
+                      fontWeight: FontWeight.w600,
+                      color: p.$2,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               )
@@ -275,7 +259,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
       const Color(0xFF9C27B0),
     ];
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
         borderRadius: BorderRadius.circular(8),
@@ -285,33 +269,31 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
         ),
         itemCount: 8,
         itemBuilder: (context, i) {
           final isFlipped = i < 2;
           return Container(
             decoration: BoxDecoration(
-              color: isFlipped
-                  ? colors[i % colors.length]
-                  : const Color(0xFF2C2C2E),
+              color: isFlipped ? colors[i % colors.length] : const Color(0xFF2C2C2E),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: isFlipped
-                    ? colors[i % colors.length]
-                    : const Color(0xFF64B5F6),
-                width: 1.5,
+                color: isFlipped ? colors[i % colors.length] : const Color(0xFF64B5F6),
+                width: 1.2,
               ),
             ),
             child: Center(
               child: isFlipped
-                  ? const Icon(Icons.star, color: Colors.white, size: 18)
-                  : Text('?',
+                  ? const Icon(Icons.star, color: Colors.white, size: 14)
+                  : Text(
+                      '?',
                       style: GoogleFonts.iceland(
-                        fontSize: 18,
+                        fontSize: 14,
                         color: const Color(0xFF64B5F6),
-                      )),
+                      ),
+                    ),
             ),
           );
         },
@@ -323,8 +305,8 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     return Align(
       alignment: Alignment.bottomRight,
       child: SizedBox(
-        width: 220,
-        height: 220,
+        width: 180, // Scaled down slightly to not choke visibility constraints on minor screens
+        height: 180,
         child: Image.asset(
           'assets/images/brain_lift.png',
           fit: BoxFit.contain,
@@ -336,7 +318,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
               ),
               child: const Icon(
                 Icons.psychology,
-                size: 120,
+                size: 100,
                 color: Color(0xFFE91E63),
               ),
             );
@@ -353,7 +335,7 @@ class _GameCardData {
   final Color cardColor;
   final Color borderColor;
   final Widget child;
-  final VoidCallback onPressed; // 👈 أضفنا هذا
+  final VoidCallback onPressed;
 
   const _GameCardData({
     required this.title,
@@ -361,73 +343,63 @@ class _GameCardData {
     required this.cardColor,
     required this.borderColor,
     required this.child,
-    required this.onPressed, // 👈 أضفنا هذا
+    required this.onPressed,
   });
 }
 
 class _GameCard extends StatelessWidget {
   final _GameCardData data;
-  final double width;
-  final double height;
 
-  const _GameCard({
-    required this.data,
-    required this.width,
-    required this.height,
-  });
+  // FIXED: Removed absolute properties width/height overrides to let GridView control bounds dynamically
+  const _GameCard({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: width,
-          height: height,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: data.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: data.borderColor, width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-            image: data.backgroundImage != null
-                ? DecorationImage(
-                    image: AssetImage(data.backgroundImage!),
-                    fit: BoxFit.fill,
-                  )
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              Center(
-                child: Text(
-                  data.title,
-                  style: GoogleFonts.iceland(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                  textAlign: TextAlign.center,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: data.cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: data.borderColor, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          image: data.backgroundImage != null
+              ? DecorationImage(
+                  image: AssetImage(data.backgroundImage!),
+                  fit: BoxFit.fill,
+                )
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // FittedBox acts as an emergency stop protection against long card names splitting layouts
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                data.title,
+                style: GoogleFonts.iceland(
+                  fontSize: 28, // Balanced size target point
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Center(child: data.child),
-              ),
-              const SizedBox(height: 16),
-              _StartButton(onPressed: data.onPressed), // 👈 ربطنا الزر هنا
-            ],
-          ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Center(child: data.child),
+            ),
+            const SizedBox(height: 12),
+            _StartButton(onPressed: data.onPressed),
+          ],
         ),
       ),
     );
@@ -449,15 +421,14 @@ class _StartButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(24),
         child: SizedBox(
-          height: 44,
+          height: 40,
           child: Center(
             child: Image.asset(
               _startButtonAsset,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 return Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 20),
                   decoration: BoxDecoration(
                     color: const Color(0xFF64B5F6),
                     borderRadius: BorderRadius.circular(24),
@@ -466,7 +437,7 @@ class _StartButton extends StatelessWidget {
                   child: const Text(
                     'START',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.black,
                       letterSpacing: 0.5,

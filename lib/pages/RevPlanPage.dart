@@ -154,7 +154,7 @@ _revisionPlanService.listenForPlan(
     return ElevatedButton.icon(
       onPressed: () => setState(() => _isSetupMode = true),
       icon: const Icon(Icons.add, color: Colors.white),
-      label: const Text('Create new Plan', style: TextStyle(color: Colors.white)),
+      label: const Text('Create New Plan', style: TextStyle(color: Colors.white)),
       style: ElevatedButton.styleFrom(
         backgroundColor: _planPurple,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

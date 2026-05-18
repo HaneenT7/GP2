@@ -2,7 +2,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'; 
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 
 // Handles background messages (must be top-level function, not inside a class)
 @pragma('vm:entry-point')
@@ -16,8 +19,67 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
+  static final FlutterLocalNotificationsPlugin _localPlugin =
+      FlutterLocalNotificationsPlugin();
+
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   OverlayEntry? _fcmToastEntry;
+
+  static const String heartRateAlertPayload = 'brain_games';
+
+  /// Tap handler for local heart-rate notifications (set from DashBoard).
+  static void Function(String? payload)? onNotificationPayload;
+
+  // ── Local notifications (main.dart before runApp) ─────────────────────────
+
+  static Future<void> init() async {
+    tz_data.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
+
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _localPlugin.initialize(
+      settings: const InitializationSettings(android: android),
+      onDidReceiveNotificationResponse: (response) {
+        onNotificationPayload?.call(response.payload);
+      },
+    );
+
+    await _localPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+  }
+
+  static const int _heartRateNotificationId = 9001;
+
+  static Future<void> showHeartRateAlert({required double bpm}) async {
+    await _localPlugin.show(
+      id: _heartRateNotificationId,
+      title: 'High heart rate',
+      body:
+          'Your heart rate reached ${bpm.round()} bpm. '
+          "You've exerted yourself — take a break or try Brain Games.",
+      payload: heartRateAlertPayload,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'heart_rate_alerts',
+          'Heart Rate Alerts',
+          channelDescription:
+              'Alerts when your heart rate is 100 bpm or higher',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
+
+  static Future<String?> getLaunchNotificationPayload() async {
+    final details = await _localPlugin.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp ?? false) {
+      return details?.notificationResponse?.payload;
+    }
+    return null;
+  }
 
   /// Call this once from main.dart before runApp()
   static Future<void> initBackgroundHandler() async {
@@ -27,20 +89,21 @@ class NotificationService {
   /// Call this after the user logs in
   Future<void> initialize(BuildContext context) async {
     print('🚀 [FCM] Start initialize()...');
-    
+
     print('🚀 [FCM] Requesting permission...');
     await _requestPermission();
     print('🚀 [FCM] Permission step done.');
-    
+
     print('🚀 [FCM] Setting up foreground options...');
     await _setupForegroundOptions();
     print('🚀 [FCM] Foreground options done.');
-    
+
     // Listen for incoming messages while the app is active in foreground
     _configureForegroundListening(context);
-    
+
     print('🚀 [FCM] Calling saveTokenToFirestore()...');
     await saveTokenToFirestore();
+    _listenForTokenRefresh();
     print('🚀 [FCM] initialize() completely finished!');
   }
 
@@ -59,7 +122,7 @@ class NotificationService {
 
   Future<void> _setupForegroundOptions() async {
     await _fcm.setForegroundNotificationPresentationOptions(
-      alert: false, 
+      alert: false,
       badge: true,
       sound: true,
     );
@@ -70,11 +133,13 @@ class NotificationService {
   /// Handles stream listening for active foreground notifications
   void _configureForegroundListening(BuildContext context) {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('[FCM] Active foreground message caught: ${message.notification?.title}');
-      
+      debugPrint(
+        '[FCM] Active foreground message caught: ${message.notification?.title}',
+      );
+
       final title = message.notification?.title ?? 'Notification';
       final body = message.notification?.body ?? '';
-      
+
       if (!Navigator.of(context).mounted) return;
 
       _fcmToastEntry?.remove();
@@ -102,7 +167,7 @@ class NotificationService {
   /// Saves the FCM token to Firestore so Cloud Functions can send to this device
   Future<void> saveTokenToFirestore() async {
     final user = FirebaseAuth.instance.currentUser;
-    print(' ✅ ✅ ✅ ✅ ✅ ✅[FCM] Current user: ${user?.uid}'); 
+    print(' ✅ ✅ ✅ ✅ ✅ ✅[FCM] Current user: ${user?.uid}');
     if (user == null) return;
 
     final token = await _fcm.getToken();
@@ -169,7 +234,9 @@ class _ToastNotificationState extends State<_ToastNotification>
   void initState() {
     super.initState();
     _controller = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 350));
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
     _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _slide = Tween<Offset>(begin: const Offset(0.3, 0), end: Offset.zero)
         .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
@@ -202,9 +269,10 @@ class _ToastNotificationState extends State<_ToastNotification>
               border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.10),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4)),
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: Row(
@@ -214,9 +282,14 @@ class _ToastNotificationState extends State<_ToastNotification>
                   width: 36,
                   height: 36,
                   decoration: const BoxDecoration(
-                      color: Color(0xFFEDE9FA), shape: BoxShape.circle),
-                  child: const Icon(Icons.notifications_active_rounded,
-                      color: Color(0xFF423066), size: 20),
+                    color: Color(0xFFEDE9FA),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.notifications_active_rounded,
+                    color: Color(0xFF423066),
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Flexible(
@@ -227,9 +300,10 @@ class _ToastNotificationState extends State<_ToastNotification>
                       Text(
                         widget.notificationTitle,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                            color: Colors.black87),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -245,7 +319,8 @@ class _ToastNotificationState extends State<_ToastNotification>
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () => _controller.reverse().then((_) => widget.onDismiss()),
+                  onTap: () =>
+                      _controller.reverse().then((_) => widget.onDismiss()),
                   child: Icon(Icons.close, size: 16, color: Colors.grey[400]),
                 ),
               ],

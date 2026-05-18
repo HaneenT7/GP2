@@ -25,6 +25,7 @@ void main() async {
   );
 
 
+  await NotificationService.init();
   await NotificationService.initBackgroundHandler();
 
   await dotenv.load(fileName: ".env");

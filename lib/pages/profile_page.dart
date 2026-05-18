@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:health/health.dart' show HealthConnectSdkStatus;
 import 'package:gp2_watad/services/health_connect_service.dart';
+import 'package:gp2_watad/services/heart_rate_alert_service.dart';
 import 'signIn.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -31,16 +32,21 @@ class _ProfilePageState extends State<ProfilePage> {
 
   final HealthConnectService _healthConnectService = HealthConnectService();
   bool _healthBusy = false;
+  bool _vitalsRefreshing = false;
+  bool _healthFetchInProgress = false;
   String? _healthStatus;
   List<HeartRateReading> _heartRateReadings = [];
   List<BloodPressureReading> _bloodPressureReadings = [];
+  HeartRateReading? _vitalsHeartRate;
+  BloodPressureReading? _vitalsBloodPressure;
+  String? _vitalsRefreshError;
 
   @override
   void initState() {
     super.initState();
     _loadUser();
     if (Platform.isAndroid) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadHealthData());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _refreshVitals());
     }
   }
 
@@ -437,8 +443,8 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'WATAD reads heart rate and blood pressure from Health Connect (including data shared by Samsung Health). '
-            'If Samsung Health has data but WATAD does not, enable sharing in Health Connect → App permissions → Samsung Health.',
+            'WATAD reads heart rate and blood pressure from Health Connect (including data shared by Samsung Health or Google Fit). '
+            'If your fitness app has data but WATAD does not, enable sharing in Health Connect → App permissions for that app.',
             style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
           ),
           if (_healthStatus != null) ...[
@@ -448,6 +454,8 @@ class _ProfilePageState extends State<ProfilePage> {
               style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
             ),
           ],
+          const SizedBox(height: 16),
+          _buildGoogleFitStatsPanel(),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -491,7 +499,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               );
-
+              final openGoogleFitButton = OutlinedButton.icon(
+                onPressed: _healthBusy ? null : _openGoogleFit,
+                icon: const Icon(Icons.directions_run_outlined),
+                label: const Text('Open Google Fit'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C4DFF),
+                  side: const BorderSide(color: Color(0xFF7C4DFF)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              );
               if (stackButtons) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -503,6 +520,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     openSettingsButton,
                     const SizedBox(height: 12),
                     openSamsungHealthButton,
+                    const SizedBox(height: 12),
+                    openGoogleFitButton,
                   ],
                 );
               }
@@ -520,7 +539,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 12),
                   openSettingsButton,
                   const SizedBox(height: 12),
-                  openSamsungHealthButton,
+                  Row(
+                    children: [
+                      Expanded(child: openSamsungHealthButton),
+                      const SizedBox(width: 12),
+                      Expanded(child: openGoogleFitButton),
+                    ],
+                  ),
                 ],
               );
             },
@@ -670,35 +695,119 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> _loadHealthData() async {
+  Future<void> _refreshVitals() async {
+    if (_healthFetchInProgress) return;
+    _healthFetchInProgress = true;
+
     setState(() {
-      _healthBusy = true;
-      _healthStatus = null;
+      _vitalsRefreshing = true;
+      _vitalsRefreshError = null;
     });
 
     try {
-      final hrResult = await _healthConnectService.fetchHeartRate();
-      final bpResult = await _healthConnectService.fetchBloodPressure();
-      final parts = <String>[
-        hrResult.statusMessage,
-        bpResult.statusMessage,
-      ];
+      final snapshot = await _healthConnectService.fetchLatestVitals(
+        lookback: const Duration(hours: 48),
+      );
+
+      if (!mounted) return;
+
       setState(() {
-        _heartRateReadings = hrResult.readings;
-        _bloodPressureReadings = bpResult.readings;
-        _healthStatus = parts.join(' ');
+        _vitalsHeartRate = snapshot.heartRate;
+        _vitalsBloodPressure = snapshot.bloodPressure;
+        if (snapshot.recentHeartRates.isNotEmpty) {
+          _heartRateReadings = snapshot.recentHeartRates;
+        }
+        if (snapshot.recentBloodPressures.isNotEmpty) {
+          _bloodPressureReadings = snapshot.recentBloodPressures;
+        }
+        _vitalsRefreshError = snapshot.errorMessage;
       });
+
+      if (snapshot.recentHeartRates.isNotEmpty) {
+        _checkHeartRateAlert(snapshot.recentHeartRates);
+      }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _heartRateReadings = [];
-        _bloodPressureReadings = [];
-        _healthStatus = 'Could not load health data: $e';
+        _vitalsRefreshError = 'Could not refresh vitals: $e';
       });
     } finally {
       if (mounted) {
-        setState(() => _healthBusy = false);
+        setState(() {
+          _healthFetchInProgress = false;
+          _vitalsRefreshing = false;
+        });
       }
     }
+  }
+
+  Future<void> _loadHealthData() => _fetchHealthData(
+        lookback: const Duration(days: 365),
+        fromVitalsPanel: false,
+      );
+
+  Future<void> _fetchHealthData({
+    required Duration lookback,
+    required bool fromVitalsPanel,
+  }) async {
+    if (_healthFetchInProgress) return;
+    _healthFetchInProgress = true;
+
+    setState(() {
+      if (fromVitalsPanel) {
+        _vitalsRefreshing = true;
+      } else {
+        _healthBusy = true;
+        _healthStatus = null;
+      }
+    });
+
+    try {
+      final results = await Future.wait([
+        _healthConnectService.fetchHeartRate(lookback: lookback),
+        _healthConnectService.fetchBloodPressure(lookback: lookback),
+      ]);
+      final hrResult = results[0] as HealthHeartRateFetchResult;
+      final bpResult = results[1] as HealthBloodPressureFetchResult;
+
+      if (!mounted) return;
+
+      setState(() {
+        _heartRateReadings = hrResult.readings;
+        _bloodPressureReadings = bpResult.readings;
+        _vitalsHeartRate =
+            hrResult.readings.isNotEmpty ? hrResult.readings.first : null;
+        _vitalsBloodPressure =
+            bpResult.readings.isNotEmpty ? bpResult.readings.first : null;
+        if (!fromVitalsPanel) {
+          _healthStatus = '${hrResult.statusMessage} ${bpResult.statusMessage}';
+        }
+      });
+
+      _checkHeartRateAlert(hrResult.readings);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (!fromVitalsPanel) {
+          _heartRateReadings = [];
+          _bloodPressureReadings = [];
+          _healthStatus = 'Could not load health data: $e';
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _healthFetchInProgress = false;
+          _healthBusy = false;
+          _vitalsRefreshing = false;
+        });
+      }
+    }
+  }
+
+  void _checkHeartRateAlert(List<HeartRateReading> readings) {
+    if (!mounted || readings.isEmpty) return;
+    HeartRateAlertService.evaluateReadings(readings, context: context);
   }
 
   Future<void> _openHealthConnectSettings() async {
@@ -721,6 +830,262 @@ class _ProfilePageState extends State<ProfilePage> {
         _healthStatus = 'Could not open Samsung Health: $e';
       });
     }
+  }
+
+  Future<void> _openGoogleFit() async {
+    try {
+      await _healthConnectService.openGoogleFit();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthStatus = 'Could not open Google Fit: $e';
+      });
+    }
+  }
+
+  HeartRateReading? get _displayHeartRate =>
+      _vitalsHeartRate ??
+      (_heartRateReadings.isNotEmpty ? _heartRateReadings.first : null);
+
+  BloodPressureReading? get _displayBloodPressure =>
+      _vitalsBloodPressure ??
+      (_bloodPressureReadings.isNotEmpty ? _bloodPressureReadings.first : null);
+
+  Widget _buildGoogleFitStatsPanel() {
+    final latestHr = _displayHeartRate;
+    final latestBp = _displayBloodPressure;
+    final hasData = latestHr != null || latestBp != null;
+    final isRefreshing = _vitalsRefreshing || _healthFetchInProgress;
+
+    return Material(
+      color: const Color(0xFF4285F4).withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.directions_run, color: Color(0xFF4285F4)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Google Fit',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1C1C1E),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh vitals',
+                      onPressed: isRefreshing ? null : _refreshVitals,
+                      icon: isRefreshing
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              Icons.refresh,
+                              size: 22,
+                              color: Colors.grey.shade700,
+                            ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildGoogleFitStatTile(
+                      icon: Icons.favorite,
+                      iconColor: const Color(0xFFE91E63),
+                      label: 'Heart rate',
+                      value: latestHr != null
+                          ? latestHr.bpm.toStringAsFixed(0)
+                          : '—',
+                      unit: latestHr != null ? 'bpm' : null,
+                      sourceLabel: latestHr != null
+                          ? _healthConnectService.formatSourceLabel(
+                              latestHr.source,
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildGoogleFitStatTile(
+                      icon: Icons.bloodtype,
+                      iconColor: const Color(0xFF7C4DFF),
+                      label: 'Blood pressure',
+                      value: latestBp != null
+                          ? '${latestBp.systolic.toStringAsFixed(0)}/${latestBp.diastolic.toStringAsFixed(0)}'
+                          : '—',
+                      unit: latestBp != null ? 'mmHg' : null,
+                      sourceLabel: latestBp != null
+                          ? _healthConnectService.formatSourceLabel(
+                              latestBp.source,
+                            )
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+                Text(
+                  _googleFitPanelStatusText(
+                    latestHr: latestHr,
+                    latestBp: latestBp,
+                    hasData: hasData,
+                    isRefreshing: isRefreshing,
+                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          if (isRefreshing)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Updating vitals…',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF4285F4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _googleFitPanelStatusText({
+    required HeartRateReading? latestHr,
+    required BloodPressureReading? latestBp,
+    required bool hasData,
+    required bool isRefreshing,
+  }) {
+    if (isRefreshing) {
+      return 'Reading latest data from Health Connect…';
+    }
+    if (_vitalsRefreshError != null) {
+      return _vitalsRefreshError!;
+    }
+    if (hasData) {
+      final parts = <String>[];
+      if (latestHr != null) {
+        parts.add(
+          'HR ${latestHr.bpm.round()} bpm · '
+          '${_healthConnectService.formatSourceLabel(latestHr.source)} · '
+          '${_formatReadingAge(latestHr.recordedAt)}',
+        );
+      }
+      if (latestBp != null) {
+        parts.add(
+          'BP ${_healthConnectService.formatBloodPressure(latestBp)} · '
+          '${_formatReadingAge(latestBp.recordedAt)}',
+        );
+      }
+      return '${parts.join(' · ')}. '
+          'WATAD reads Health Connect (synced from Google Fit). '
+          'Open Google Fit first if numbers look old.';
+    }
+    return 'No vitals in Health Connect yet. Open Google Fit, sync to Health Connect, then refresh.';
+  }
+
+  String _formatReadingAge(DateTime recordedAt) {
+    final diff = DateTime.now().difference(recordedAt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inHours < 1) return '${diff.inMinutes} min ago';
+    if (diff.inDays < 1) return '${diff.inHours} h ago';
+    return '${diff.inDays} d ago';
+  }
+
+  Widget _buildGoogleFitStatTile({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    String? unit,
+    String? sourceLabel,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 28),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: value == '—' ? 22 : 26,
+                        fontWeight: FontWeight.bold,
+                        color: value == '—'
+                            ? Colors.grey.shade400
+                            : const Color(0xFF1C1C1E),
+                      ),
+                    ),
+                    if (unit != null) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        unit,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (sourceLabel != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    sourceLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildLogOutButton() {

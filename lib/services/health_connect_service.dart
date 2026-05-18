@@ -48,7 +48,11 @@ class HealthConnectProbe {
   final List<String> grantedPermissions;
 
   bool get hasSamsungHealthSource {
-    return sources.any((source) => source.contains('shealth'));
+    return sources.any((source) => isSamsungHealthSource(source));
+  }
+
+  bool get hasGoogleFitSource {
+    return sources.any((source) => isGoogleFitSource(source));
   }
 
   bool get hasOnlyWatadSource {
@@ -95,6 +99,22 @@ class HealthHeartRateFetchResult {
       );
 }
 
+class LatestVitalsSnapshot {
+  const LatestVitalsSnapshot({
+    this.heartRate,
+    this.bloodPressure,
+    this.recentHeartRates = const [],
+    this.recentBloodPressures = const [],
+    this.errorMessage,
+  });
+
+  final HeartRateReading? heartRate;
+  final BloodPressureReading? bloodPressure;
+  final List<HeartRateReading> recentHeartRates;
+  final List<BloodPressureReading> recentBloodPressures;
+  final String? errorMessage;
+}
+
 class HealthBloodPressureFetchResult {
   const HealthBloodPressureFetchResult({
     required this.readings,
@@ -137,13 +157,44 @@ class HealthBloodPressureFetchResult {
       return 'Allow past health data for WATAD in Health Connect, then try again.';
     }
     return 'No blood pressure between ${_formatDate(searchStart)} and ${_formatDate(searchEnd)}. '
-        'Check Health Connect → Browse data → Blood pressure, and Samsung Health sharing.';
+        'Check Health Connect → Browse data → Blood pressure, and Samsung Health or Google Fit sharing.';
   }
 }
 
+bool isSamsungHealthSource(String source) => source.contains('shealth');
+
+/// Matches package ids and display names Health Connect / Google Fit may use.
+bool isGoogleFitSource(String source) {
+  final lower = source.toLowerCase();
+  const googlePackages = [
+    'com.google.android.apps.fitness',
+    'com.google.android.gms',
+    'com.google.android.apps.wear',
+    'com.google.android.wearable',
+  ];
+  if (googlePackages.any(lower.contains)) return true;
+  if (lower.contains('google fit') || lower.contains('googlefit')) return true;
+  if (lower.contains('google') && lower.contains('fitness')) return true;
+  return false;
+}
+
+String healthPointSourceLabel(HealthDataPoint point) {
+  final id = point.sourceId.trim();
+  final name = point.sourceName.trim();
+  if (id.isNotEmpty && name.isNotEmpty && id != name) {
+    return '$id|$name';
+  }
+  if (id.isNotEmpty) return id;
+  if (name.isNotEmpty) return name;
+  return 'Health Connect';
+}
+
 String formatHealthSourceLabel(String source) {
-  if (source.contains('shealth')) {
+  if (isSamsungHealthSource(source)) {
     return 'Samsung Health';
+  }
+  if (isGoogleFitSource(source)) {
+    return 'Google Fit';
   }
   if (source.contains('gp2_watad')) {
     return 'WATAD';
@@ -172,10 +223,6 @@ String _buildHeartRateStatus({
         .toSet()
         .toList()
       ..sort();
-    final hasSamsung = readings.any((r) => r.source.contains('shealth'));
-    if (hasSamsung) {
-      return 'Loaded ${readings.length} heart rate reading(s) (${sources.join(', ')}).';
-    }
     return 'Loaded ${readings.length} heart rate reading(s) (${sources.join(', ')}).';
   }
   if (!grantedPermissions.any(
@@ -186,10 +233,10 @@ String _buildHeartRateStatus({
   final probeInfo = probe;
   if (probeInfo != null) {
     if (probeInfo.sampleCount == 0 && probeInfo.restingRecords == 0) {
-      return 'No heart rate in Health Connect. Enable Samsung Health → Health Connect sharing.';
+      return 'No heart rate in Health Connect. Enable sharing from Samsung Health or Google Fit in Health Connect app permissions.';
     }
     if (probeInfo.hasOnlyWatadSource) {
-      return 'Heart rate in Health Connect is only from WATAD, not Samsung Health yet.';
+      return 'Heart rate in Health Connect is only from WATAD. Enable Samsung Health or Google Fit sharing in Health Connect.';
     }
   }
   if (!historyAuthorized) {
@@ -232,10 +279,15 @@ class HealthConnectService {
         HealthDataAccess.READ,
       );
 
-  Future<void> _ensureConfigured() async {
-    if (_configured) return;
+  Future<void> _ensureConfigured({bool force = false}) async {
+    if (_configured && !force) return;
     await _health.configure();
     _configured = true;
+  }
+
+  /// Forces the health plugin to re-bind on the next read (fresher vitals refresh).
+  Future<void> invalidateHealthPluginCache() async {
+    _configured = false;
   }
 
   Future<HealthConnectSdkStatus?> getSdkStatus() async {
@@ -256,6 +308,11 @@ class HealthConnectService {
   Future<void> openSamsungHealth() async {
     if (!Platform.isAndroid) return;
     await _nativeChannel.invokeMethod<void>('openSamsungHealth');
+  }
+
+  Future<void> openGoogleFit() async {
+    if (!Platform.isAndroid) return;
+    await _nativeChannel.invokeMethod<void>('openGoogleFit');
   }
 
   Future<bool> requestHealthAccess() async {
@@ -286,6 +343,75 @@ class HealthConnectService {
   Future<bool> isHistoryAuthorized() async {
     await _ensureConfigured();
     return _health.isHealthDataHistoryAuthorized();
+  }
+
+  /// Reads the newest heart rate / blood pressure from Health Connect (last [lookback]).
+  Future<LatestVitalsSnapshot> fetchLatestVitals({
+    Duration lookback = const Duration(hours: 48),
+  }) async {
+    await invalidateHealthPluginCache();
+    await _ensureConfigured(force: true);
+
+    final ctx = await _prepareFetchContext(lookback);
+    if (ctx.error != null) {
+      return LatestVitalsSnapshot(errorMessage: ctx.error);
+    }
+
+    try {
+      HeartRateReading? latestHr;
+      BloodPressureReading? latestBp;
+
+      if (Platform.isAndroid) {
+        final raw = await _nativeChannel.invokeMethod<dynamic>(
+          'readLatestVitals',
+          {'hours': lookback.inHours.clamp(1, 168)},
+        );
+        if (raw is Map) {
+          final map = Map<String, dynamic>.from(raw);
+          latestHr = _parseHeartRateMap(map['heartRate']);
+          latestBp = _parseBloodPressureMap(map['bloodPressure']);
+        }
+      }
+
+      final nativeHr =
+          await _fetchHeartRateFromNative(ctx.start, ctx.end);
+      final pluginHr =
+          await _fetchHeartRateFromPlugin(ctx.start, ctx.end);
+      final mergedHr = _mergeHeartRateReadings(nativeHr, pluginHr);
+
+      final nativeBp =
+          await _fetchBloodPressureFromNative(ctx.start, ctx.end);
+      final pluginBp =
+          await _fetchBloodPressureFromPlugin(ctx.start, ctx.end);
+      final mergedBp = _mergeBloodPressureReadings(nativeBp, pluginBp);
+
+      latestHr = _pickNewestHeartRate([
+        latestHr,
+        if (mergedHr.isNotEmpty) mergedHr.first,
+      ]);
+      latestBp = _pickNewestBloodPressure([
+        latestBp,
+        if (mergedBp.isNotEmpty) mergedBp.first,
+      ]);
+
+      if (kDebugMode) {
+        debugPrint(
+          'Latest vitals: HR=${latestHr?.bpm} @ ${latestHr?.recordedAt} '
+          'src=${latestHr?.source} | BP=${latestBp?.systolic}/${latestBp?.diastolic}',
+        );
+      }
+
+      return LatestVitalsSnapshot(
+        heartRate: latestHr,
+        bloodPressure: latestBp,
+        recentHeartRates: mergedHr,
+        recentBloodPressures: mergedBp,
+      );
+    } on PlatformException catch (error) {
+      return LatestVitalsSnapshot(
+        errorMessage: 'Could not read latest vitals: ${error.message}',
+      );
+    }
   }
 
   Future<HealthHeartRateFetchResult> fetchHeartRate({
@@ -559,13 +685,10 @@ class HealthConnectService {
       final sources = <int, String>{};
 
       for (final point in points) {
-        final mmHg = _mmHgFromPoint(point);
+        final mmHg = _numericValueFromPoint(point);
         if (mmHg == null || mmHg <= 0) continue;
         final key = point.dateTo.millisecondsSinceEpoch;
-        final source = point.sourceName.isNotEmpty
-            ? point.sourceName
-            : (point.sourceId.isNotEmpty ? point.sourceId : 'Health Connect');
-        sources[key] = source;
+        sources[key] = healthPointSourceLabel(point);
         if (point.type == HealthDataType.BLOOD_PRESSURE_SYSTOLIC) {
           systolic[key] = mmHg;
         } else {
@@ -635,29 +758,54 @@ class HealthConnectService {
   }
 
   HeartRateReading? _parseHeartRatePoint(HealthDataPoint point) {
-    final bpm = _mmHgFromPoint(point);
+    final bpm = _numericValueFromPoint(point);
     if (bpm == null || bpm <= 0) return null;
     final type = switch (point.type) {
       HealthDataType.RESTING_HEART_RATE => 'RESTING_HEART_RATE',
       _ => 'HEART_RATE',
     };
-    final source = point.sourceName.isNotEmpty
-        ? point.sourceName
-        : (point.sourceId.isNotEmpty ? point.sourceId : 'Health Connect');
+    final source = healthPointSourceLabel(point);
+    final recordedAt = point.dateTo.isAfter(point.dateFrom)
+        ? point.dateTo
+        : point.dateFrom;
     return HeartRateReading(
       type: type,
       bpm: bpm,
-      recordedAt: point.dateTo,
+      recordedAt: recordedAt,
       source: source,
     );
   }
 
-  double? _mmHgFromPoint(HealthDataPoint point) {
+  HeartRateReading? _pickNewestHeartRate(List<HeartRateReading?> candidates) {
+    HeartRateReading? best;
+    for (final candidate in candidates) {
+      if (candidate == null) continue;
+      if (best == null || candidate.recordedAt.isAfter(best.recordedAt)) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  BloodPressureReading? _pickNewestBloodPressure(
+    List<BloodPressureReading?> candidates,
+  ) {
+    BloodPressureReading? best;
+    for (final candidate in candidates) {
+      if (candidate == null) continue;
+      if (best == null || candidate.recordedAt.isAfter(best.recordedAt)) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  double? _numericValueFromPoint(HealthDataPoint point) {
     final value = point.value;
     if (value is NumericHealthValue) {
       return value.numericValue.toDouble();
     }
-    return null;
+    return double.tryParse(value.toString());
   }
 
   List<HeartRateReading> _mergeHeartRateReadings(

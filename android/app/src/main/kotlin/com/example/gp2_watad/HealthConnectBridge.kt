@@ -12,6 +12,7 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,6 +118,28 @@ class HealthConnectBridge(
                     }
                 }
 
+                "openGoogleFit" -> {
+                    runCatching {
+                        openGoogleFit()
+                        result.success(true)
+                    }.onFailure { error ->
+                        Log.e(TAG, "Failed to open Google Fit", error)
+                        result.error("health_connect_error", error.message, null)
+                    }
+                }
+
+                "readLatestVitals" -> {
+                    val hours = call.argument<Int>("hours") ?: 48
+                    scope.launch {
+                        runCatching {
+                            result.success(readLatestVitals(hours))
+                        }.onFailure { error ->
+                            Log.e(TAG, "Failed to read latest vitals", error)
+                            result.error("health_connect_error", error.message, null)
+                        }
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -152,10 +175,25 @@ class HealthConnectBridge(
     }
 
     private fun openSamsungHealth() {
-        val packages = listOf(
-            "com.sec.android.app.shealth",
-            "com.samsung.android.app.shealth",
+        openExternalApp(
+            packages = listOf(
+                "com.sec.android.app.shealth",
+                "com.samsung.android.app.shealth",
+            ),
+            notInstalledMessage = "Samsung Health is not installed on this device",
         )
+    }
+
+    private fun openGoogleFit() {
+        openExternalApp(
+            packages = listOf(
+                "com.google.android.apps.fitness",
+            ),
+            notInstalledMessage = "Google Fit is not installed on this device",
+        )
+    }
+
+    private fun openExternalApp(packages: List<String>, notInstalledMessage: String) {
         for (packageName in packages) {
             val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
@@ -164,7 +202,7 @@ class HealthConnectBridge(
                 return
             }
         }
-        error("Samsung Health is not installed on this device")
+        error(notInstalledMessage)
     }
 
     private suspend fun probeHeartRate(startMs: Long, endMs: Long): Map<String, Any?> =
@@ -248,7 +286,7 @@ class HealthConnectBridge(
                 if (record.samples.isEmpty()) {
                     Log.w(
                         TAG,
-                        "Skipping HEART_RATE record with no samples from $sourcePackage",
+                        "HEART_RATE record with no samples from $sourcePackage",
                     )
                     continue
                 }
@@ -347,6 +385,38 @@ class HealthConnectBridge(
             pageToken = response.pageToken
         } while (!pageToken.isNullOrEmpty())
     }
+
+    private suspend fun readLatestVitals(hours: Int): Map<String, Any?> =
+        withContext(Dispatchers.IO) {
+            val client = HealthConnectClient.getOrCreate(activity)
+            val end = Instant.now()
+            val start = end.minus(hours.toLong(), ChronoUnit.HOURS)
+
+            val heartRates = mutableListOf<Map<String, Any?>>()
+            appendHeartRateRecords(client, start, end, heartRates)
+            appendRestingHeartRateRecords(client, start, end, heartRates)
+
+            val bloodPressures = mutableListOf<Map<String, Any?>>()
+            appendBloodPressureRecords(client, start, end, bloodPressures)
+
+            val latestHeartRate = heartRates.maxByOrNull { record ->
+                (record["recordedAtMs"] as Number).toLong()
+            }
+            val latestBloodPressure = bloodPressures.maxByOrNull { record ->
+                (record["recordedAtMs"] as Number).toLong()
+            }
+
+            Log.i(
+                TAG,
+                "Latest vitals: HR=$latestHeartRate BP=$latestBloodPressure " +
+                    "(from ${heartRates.size} HR / ${bloodPressures.size} BP points)",
+            )
+
+            mapOf(
+                "heartRate" to latestHeartRate,
+                "bloodPressure" to latestBloodPressure,
+            )
+        }
 
     companion object {
         private const val TAG = "GP2_HEALTH_CONNECT"

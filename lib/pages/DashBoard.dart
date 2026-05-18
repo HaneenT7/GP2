@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:gp2_watad/services/notification_service.dart'; // تم نقل هذا الإستيراد من الملف الثاني
-import 'dart:convert';
+import 'package:gp2_watad/services/notification_service.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
 import 'course_folders_page.dart';
@@ -12,6 +15,8 @@ import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
 import 'quiz_page.dart';
+import '../services/health_connect_service.dart';
+import '../services/heart_rate_alert_service.dart';
 import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
 import '../services/task_quiz_service.dart';
@@ -25,6 +30,8 @@ class DashBoard extends StatefulWidget {
 
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
+  final HealthConnectService _healthConnectService = HealthConnectService();
+  Timer? _heartRateMonitorTimer;
 
   @override
   void initState() {
@@ -32,12 +39,76 @@ class _DashBoardState extends State<DashBoard> {
     // ── شغلِك: تهيئة الإشعارات السحابية بعد بناء الإطار ──
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
       try {
         await NotificationService().initialize(context);
       } catch (e) {
         debugPrint('❌ [DashBoard] Error during notification initialization: $e');
       }
     });
+
+    // مراقبة النبض + تنبيه 100+ والانتقال لـ Brain Games
+    HeartRateAlertService.onGoToBrainGames = _openBrainGames;
+    NotificationService.onNotificationPayload = _onNotificationPayload;
+    _handleLaunchFromHeartRateNotification();
+    if (Platform.isAndroid) {
+      _startHeartRateMonitoring();
+    }
+  }
+
+  @override
+  void dispose() {
+    _heartRateMonitorTimer?.cancel();
+    HeartRateAlertService.onGoToBrainGames = null;
+    NotificationService.onNotificationPayload = null;
+    super.dispose();
+  }
+
+  void _openBrainGames() {
+    if (!mounted) return;
+    setState(() => _selectedIndex = kBrainGamesTabIndex);
+  }
+
+  void _onNotificationPayload(String? payload) {
+    if (payload == NotificationService.heartRateAlertPayload) {
+      _openBrainGames();
+    }
+  }
+
+  Future<void> _handleLaunchFromHeartRateNotification() async {
+    final payload = await NotificationService.getLaunchNotificationPayload();
+    if (payload == NotificationService.heartRateAlertPayload && mounted) {
+      _openBrainGames();
+    }
+  }
+
+  void _startHeartRateMonitoring() {
+    _checkHeartRateForAlert();
+    _heartRateMonitorTimer = Timer.periodic(
+      const Duration(minutes: 3),
+      (_) => _checkHeartRateForAlert(),
+    );
+  }
+
+  Future<void> _checkHeartRateForAlert() async {
+    try {
+      final snapshot = await _healthConnectService.fetchLatestVitals(
+        lookback: const Duration(hours: 48),
+      );
+      if (!mounted) return;
+
+      final readings = snapshot.recentHeartRates.isNotEmpty
+          ? snapshot.recentHeartRates
+          : [
+              if (snapshot.heartRate != null) snapshot.heartRate!,
+            ];
+
+      if (readings.isNotEmpty) {
+        HeartRateAlertService.evaluateReadings(readings, context: context);
+      }
+    } catch (_) {
+      // Health Connect may be unavailable; skip silently.
+    }
   }
 
   // Same order as IndexedStack children

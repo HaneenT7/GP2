@@ -86,6 +86,7 @@
     <!-- Required to query activities that can process text -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.google.android.apps.fitness" />
         <package android:name="com.sec.android.app.shealth" />
         <package android:name="com.samsung.android.app.shealth" />
         <intent>

@@ -1,1 +1,40 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"gp2-watad","appId":"1:585077968144:android:fc613c4a8cab17387fe995","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"gp2-watad","configurations":{"android":"1:585077968144:android:fc613c4a8cab17387fe995","ios":"1:585077968144:ios:e2617e637e961a247fe995","web":"1:585077968144:web:d247ad1924a3fee57fe995"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "gp2-watad",
+          "appId": "1:585077968144:android:fc613c4a8cab17387fe995",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "gp2-watad",
+          "configurations": {
+            "android": "1:585077968144:android:fc613c4a8cab17387fe995",
+            "ios": "1:585077968144:ios:e2617e637e961a247fe995",
+            "web": "1:585077968144:web:d247ad1924a3fee57fe995"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}

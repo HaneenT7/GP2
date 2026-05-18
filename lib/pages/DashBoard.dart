@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gp2_watad/services/notification_service.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
@@ -10,7 +11,6 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
-
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -22,10 +22,29 @@ class DashBoard extends StatefulWidget {
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
 
-  @override
+ @override
   void initState() {
-    super.initState(); 
+    super.initState();
+    
+    // 🚀 الحل النهائي: تأجيل الاستدعاء بذكاء حتى يستقر الفايربيز وينتهي بناء الواجهة
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      print('🟢 [DashBoard] Frame rendered. Waiting 1 second for Firebase Auth stabilization...');
+      await Future.delayed(const Duration(seconds: 1)); 
+      
+      try {
+        print('🟢 [DashBoard] Triggering NotificationService().initialize() now...');
+        await NotificationService().initialize();
+        print('🟢 [DashBoard] NotificationService execution requested successfully.');
+      } catch (e) {
+        print('❌ [DashBoard] Error during notification initialization: $e');
+      }
+    });
   }
+
+  // @override
+  // void initState() {
+  //   super.initState();
+  // }
 
   // Same order as IndexedStack children
   static const _pageTitles = [
@@ -65,12 +84,14 @@ class _DashBoardState extends State<DashBoard> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF553C76).withValues(alpha: 0.08),
+                            color:
+                                const Color(0xFF553C76).withValues(alpha: 0.08),
                             blurRadius: 24,
                             offset: const Offset(0, 2),
                           ),
                           BoxShadow(
-                            color: const Color(0xFF553C76).withValues(alpha: 0.05),
+                            color:
+                                const Color(0xFF553C76).withValues(alpha: 0.05),
                             blurRadius: 0,
                             spreadRadius: 1,
                           ),
@@ -419,8 +440,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -478,8 +498,8 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
                       bottom: -5,
                       child: Icon(Icons.psychology,
                           size: 40,
-                          color: const Color(0xFF7C3AED)
-                              .withValues(alpha: 0.3))),
+                          color:
+                              const Color(0xFF7C3AED).withValues(alpha: 0.3))),
                 ],
               ),
             ),
@@ -646,8 +666,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
           // Extract the material title we saved in n8n
-          final String pdfName = data['materialTitle'] ?? 'Study Material'; 
-          
+          final String pdfName = data['materialTitle'] ?? 'Study Material';
+
           try {
             final List<dynamic> daysList =
                 jsonDecode(data['dailyTasks'] as String? ?? '[]');
@@ -700,10 +720,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   Widget _buildTaskCard({
     required String title,
     required String folder,
-    required String pdfName, 
-    required String pages, 
+    required String pdfName,
+    required String pages,
     required bool isCompleted,
-    required bool isOverdue, 
+    required bool isOverdue,
     required String taskId,
     required String docId,
     required List fullDailyTasks,
@@ -724,7 +744,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start, // Align top for multi-line
+        crossAxisAlignment:
+            CrossAxisAlignment.start, // Align top for multi-line
         children: [
           InkWell(
             onTap: () async {
@@ -761,16 +782,20 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                     decoration: isCompleted ? TextDecoration.lineThrough : null,
                     color: isCompleted
                         ? Colors.green.shade700
-                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
+                        : (isOverdue
+                            ? Colors.deepOrange.shade900
+                            : Colors.black87),
                   ),
                 ),
                 const SizedBox(height: 4),
                 // Displaying Folder and PDF Name
                 Text(
-                    '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
-                    style: TextStyle(
+                  '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
+                  style: TextStyle(
                     fontSize: 11,
-                    color: isCompleted ? Colors.green.shade400 : Colors.grey.shade600,
+                    color: isCompleted
+                        ? Colors.green.shade400
+                        : Colors.grey.shade600,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -781,14 +806,18 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   children: [
                     if (pages.isNotEmpty) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           'pp. $pages',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -893,12 +922,13 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     ));
   }
 }
-
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -913,18 +943,112 @@ class NotificationsPage extends StatelessWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.notifications_none_outlined,
-                size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text('No notifications yet',
-                style: TextStyle(fontSize: 18, color: Colors.grey[500])),
-          ],
-        ),
-      ),
+      body: user == null
+          ? const Center(child: Text('Please sign in.'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: user.uid)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                // Loading state
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                // Empty state
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_none_outlined,
+                            size: 64, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text('No notifications yet',
+                            style: TextStyle(
+                                fontSize: 18, color: Colors.grey[500])),
+                      ],
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final bool isRead = data['isRead'] ?? false;
+                    final Timestamp? ts = data['createdAt'] as Timestamp?;
+                    final String timeAgo = ts != null
+                        ? _formatTime(ts.toDate())
+                        : '';
+
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      leading: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isRead
+                              ? Colors.grey[100]
+                              : const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.school_outlined,
+                          color: isRead
+                              ? Colors.grey
+                              : const Color(0xFF7C3AED),
+                          size: 22,
+                        ),
+                      ),
+                      title: Text(
+                        data['title'] ?? '',
+                        style: TextStyle(
+                          fontWeight: isRead
+                              ? FontWeight.normal
+                              : FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(data['body'] ?? '',
+                              style: const TextStyle(fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(timeAgo,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[400])),
+                        ],
+                      ),
+                      // Mark as read when tapped
+                      onTap: () {
+                        if (!isRead) {
+                          docs[index].reference.update({'isRead': true});
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
     );
+  }
+
+  // Formats timestamp to human-readable string
+  String _formatTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 }

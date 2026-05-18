@@ -197,7 +197,7 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Icon(
               Icons.person,
               size: 44,
-              color: Color.fromARGB(255, 223, 164, 192),
+              color: Color(0xFFDFA4C0),
             ),
           ),
           const SizedBox(width: 20),

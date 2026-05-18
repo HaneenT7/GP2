@@ -36,7 +36,7 @@ class RevisionPlanRegenerateClient {
   String _generateRequestId() {
     final u = _userId ?? 'anon';
     final t = DateTime.now().millisecondsSinceEpoch;
-    return '${u.substring(0, u.length > 8 ? 8 : u.length)}_$t';
+    return '${u}_$t';
   }
 
   Uri _regenerateWebhookUri() {

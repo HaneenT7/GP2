@@ -10,9 +10,11 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
+import 'quiz_page.dart';
 import '../services/exam_notification_scheduler.dart';
 import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
+import '../services/task_quiz_service.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -792,131 +794,251 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           ),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start, // Align top for multi-line
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () async {
-              for (var day in fullDailyTasks) {
-                if (day['date'] == dateKey) {
-                  for (var t in day['tasks']) {
-                    if (t['taskId'] == taskId)
-                      t['completed'] = !(t['completed'] ?? false);
+          // Top row: Checkbox on left
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () async {
+                  for (var day in fullDailyTasks) {
+                    if (day['date'] == dateKey) {
+                      for (var t in day['tasks']) {
+                        if (t['taskId'] == taskId)
+                          t['completed'] = !(t['completed'] ?? false);
+                      }
+                    }
                   }
-                }
-              }
-              await FirebaseFirestore.instance
-                  .collection('revisionPlans')
-                  .doc(docId)
-                  .update({'dailyTasks': jsonEncode(fullDailyTasks)});
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(
-                isCompleted
-                    ? Icons.check_circle
-                    : isRescheduled
-                        ? Icons.schedule
-                        : Icons.radio_button_unchecked,
-                color: isCompleted
-                    ? Colors.green
-                    : RevisionTaskCardStyle.iconAccent(
-                            isOverdue: isOverdue,
-                            isRescheduled: isRescheduled,
-                          ) ??
-                        Colors.grey,
+                  await FirebaseFirestore.instance
+                      .collection('revisionPlans')
+                      .doc(docId)
+                      .update({'dailyTasks': jsonEncode(fullDailyTasks)});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    isCompleted
+                        ? Icons.check_circle
+                        : isRescheduled
+                            ? Icons.schedule
+                            : Icons.radio_button_unchecked,
+                    color: isCompleted
+                        ? Colors.green
+                        : RevisionTaskCardStyle.iconAccent(
+                                isOverdue: isOverdue,
+                                isRescheduled: isRescheduled,
+                              ) ??
+                            Colors.grey,
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          decoration:
-                              isCompleted ? TextDecoration.lineThrough : null,
-                          color: isCompleted
-                              ? Colors.green.shade700
-                              : RevisionTaskCardStyle.title(
-                                  isCompleted: isCompleted,
-                                  isOverdue: isOverdue,
-                                  isRescheduled: isRescheduled,
-                                ),
-                        ),
-                      ),
-                    ),
-                    if (isRescheduled && !isCompleted)
-                      Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: RevisionTaskCardStyle.rescheduledBadgeBackground,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'Rescheduled',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: RevisionTaskCardStyle.rescheduledTitle,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              decoration: isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: isCompleted
+                                  ? Colors.green.shade700
+                                  : RevisionTaskCardStyle.title(
+                                      isCompleted: isCompleted,
+                                      isOverdue: isOverdue,
+                                      isRescheduled: isRescheduled,
+                                    ),
+                            ),
                           ),
                         ),
+                        if (isRescheduled && !isCompleted)
+                          Container(
+                            margin: const EdgeInsets.only(left: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: RevisionTaskCardStyle
+                                  .rescheduledBadgeBackground,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Rescheduled',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: RevisionTaskCardStyle.rescheduledTitle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isCompleted
+                            ? Colors.green.shade400
+                            : Colors.grey.shade600,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                // Displaying Folder and PDF Name
-                Text(
-                    '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
-                    style: TextStyle(
-                    fontSize: 11,
-                    color: isCompleted ? Colors.green.shade400 : Colors.grey.shade600,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          // Pages and status row
+          Row(
+            children: [
+              if (pages.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  child: Text(
+                    'pp. $pages',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                // Displaying Page Numbers and Status
-                Row(
-                  children: [
-                    if (pages.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'pp. $pages',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (isOverdue && !isCompleted)
-                      Text('Overdue',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.deepOrange.shade800)),
-                  ],
-                ),
+                const SizedBox(width: 8),
               ],
-            ),
+              if (isOverdue && !isCompleted)
+                Text(
+                  'Overdue',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepOrange.shade800,
+                  ),
+                ),
+            ],
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // Bottom row: Take Quiz button on right
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SizedBox(
+                height: 28,
+                child: ElevatedButton(
+                  onPressed: isCompleted ? null : () => _takeQuizForTask(
+                    title: title,
+                    folder: folder,
+                    pdfName: pdfName,
+                    pages: pages,
+                    taskDocId: docId,
+                    taskId: taskId,
+                    dateKey: dateKey,
+                    fullDailyTasks: fullDailyTasks,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: Text(
+                    'Quiz',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isCompleted ? Colors.grey : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _takeQuizForTask({
+    required String title,
+    required String folder,
+    required String pdfName,
+    required String pages,
+    required String taskDocId,
+    required String taskId,
+    required String dateKey,
+    required List fullDailyTasks,
+  }) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Generating quiz for "$title"...',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final quiz = await TaskQuizService.generateTaskQuiz(
+        taskTitle: title,
+        subject: folder,
+        topic: pages.isNotEmpty ? 'Pages: $pages' : null,
+        materialTitle: pdfName.isNotEmpty ? pdfName : null,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      // Navigate to QuizPage with generated quiz and task info for auto-completion
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuizPage(
+            quiz: quiz,
+            onExit: () => Navigator.pop(context),
+            taskDocId: taskDocId,
+            taskId: taskId,
+            dateKey: dateKey,
+            fullDailyTasks: fullDailyTasks,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      // Show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating quiz: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
   }
 
   Widget _buildNoTasksPlaceholder(String message) {

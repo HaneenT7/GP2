@@ -166,15 +166,14 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
                 );
               }
 
+              // FIXED: Replaced rigid FixedCrossAxisCount with a highly adaptive MaxCrossAxisExtent approach
               return GridView.builder(
                 padding: const EdgeInsets.all(16),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: MediaQuery.of(context).size.width > 600
-                      ? 3
-                      : 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 2.3,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 320, // Clean desktop and tablet sizing limits
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 1.6, // Safer aspect ratio layout allocation
                 ),
                 itemCount: files.length,
                 itemBuilder: (context, index) => _buildFileCard(files[index]),
@@ -202,7 +201,6 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
@@ -213,20 +211,25 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
                 child: const Icon(
                   Icons.picture_as_pdf,
                   color: Colors.red,
-                  size: 28,
+                  size: 24, // Slightly scaled down to gain layout height
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                fileNameWithoutExt,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              
+              // FIXED: Wrapped file title with Expanded to take up available space safely
+              Expanded(
+                child: Text(
+                  fileNameWithoutExt,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              
+              const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -234,31 +237,37 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
                     _formatFileSize(file.fileSize),
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
-                  PopupMenuButton(
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'open', child: Text('Open')),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Text(
-                          'Delete',
-                          style: TextStyle(color: Colors.red),
+                  // Small alignment adjustment wrapper to protect bounds
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: PopupMenuButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'open', child: Text('Open')),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text(
+                            'Delete',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ),
-                      ),
-                    ],
-                    onSelected: (value) {
-                      if (value == 'open') _openFile(file);
-                      if (value == 'delete') _deleteFile(file);
-                    },
+                      ],
+                      onSelected: (value) {
+                        if (value == 'open') _openFile(file);
+                        if (value == 'delete') _deleteFile(file);
+                      },
+                    ),
                   ),
                 ],
               ),
             ],
           ),
         ),
-      ), // إغلاق الـ InkWell
-    ); // إغلاق الـ Card
-  } // إغلاق الدالة بشكل صحيح
+      ),
+    );
+  }
 
   void _openFile(FolderFile file) {
     Navigator.push(
@@ -348,6 +357,85 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
     }
   }
 
+  void _showFadingPill(OverlayState overlayState) {
+    late OverlayEntry entry;
+    final ValueNotifier<double> opacityNotifier = ValueNotifier<double>(0.0);
+    const Color localPurple = Color(0xFF6B46C1);
+
+    entry = OverlayEntry(
+      builder: (BuildContext context) => Positioned(
+        bottom: MediaQuery.of(context).size.height * 0.12, 
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ValueListenableBuilder<double>(
+              valueListenable: opacityNotifier,
+              builder: (BuildContext context, double opacityValue, Widget? child) {
+                return AnimatedOpacity(
+                  opacity: opacityValue,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: child,
+                );
+              },
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: localPurple.withOpacity(0.08),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.delete_outline, color: localPurple, size: 15),
+                      SizedBox(width: 6),
+                      Text(
+                        'File deleted',
+                        style: TextStyle(
+                          color: localPurple,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (opacityNotifier.hashCode != 0) {
+        opacityNotifier.value = 1.0;
+      }
+    });
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      opacityNotifier.value = 0.0;
+      Future.delayed(const Duration(milliseconds: 300), () {
+        entry.remove();
+        opacityNotifier.dispose();
+      });
+    });
+  }
+
   Future<void> _deleteFile(FolderFile file) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -372,11 +460,11 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
       try {
         await _fileService.deleteFile(file);
         await _folderService.touchFolder(widget.folder.id);
-        if (mounted)
-          _showSuccessDialog(
-            'File Deleted',
-            'The file is deleted successfully',
-          );
+        
+        if (mounted) {
+          final overlayState = Overlay.of(context);
+          _showFadingPill(overlayState);
+        }
       } catch (e) {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
@@ -459,21 +547,6 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
   }
 
   String _normalizeFileName(String fileName) {

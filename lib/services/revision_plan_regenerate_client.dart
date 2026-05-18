@@ -20,7 +20,9 @@ class RevisionPlanRegenerateClient {
   String? get _userId => _auth.currentUser?.uid;
 
   static const String _collection = 'revisionPlans';
-  static const Duration _listenTimeout = Duration(seconds: 120);
+  static const Duration _listenTimeout = Duration(seconds: 180);
+  /// After Firestore changes, wait briefly for n8n to finish writing all tasks.
+  static const Duration _stabilizationAfterChange = Duration(seconds: 12);
 
   static const List<String> _variationHints = [
     'Spread incomplete work evenly across eligible study days.',
@@ -142,28 +144,59 @@ class RevisionPlanRegenerateClient {
   Future<RevisionPlanResult> _waitForRegeneratePlan({
     required String planId,
     required String baselineDailyTasksJson,
+    Set<String> requiredTaskIds = const {},
   }) async {
     final docRef = _firestore.collection(_collection).doc(planId);
 
     final completer = Completer<RevisionPlanResult>();
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
     Timer? timeoutTimer;
+    Timer? stabilizationTimer;
+    DateTime? firstChangeAt;
+    String? latestPlanContent;
 
     void finish(RevisionPlanResult result) {
       if (!completer.isCompleted) {
         sub?.cancel();
         timeoutTimer?.cancel();
+        stabilizationTimer?.cancel();
         completer.complete(result);
       }
     }
 
-    timeoutTimer = Timer(_listenTimeout, () {
+    void completeWithLatestContent() {
+      if (latestPlanContent == null || latestPlanContent!.isEmpty) return;
+      finish(RevisionPlanResult(
+        requestId: planId,
+        status: 'completed',
+        planContent: latestPlanContent,
+      ));
+    }
+
+    timeoutTimer = Timer(_listenTimeout, () async {
+      try {
+        final snap = await docRef.get();
+        if (snap.exists && snap.data() != null) {
+          final parsed = _parseDailyTasksField(snap.data()!);
+          final after = jsonEncode(parsed);
+          if (after.isNotEmpty && after != baselineDailyTasksJson) {
+            finish(RevisionPlanResult(
+              requestId: planId,
+              status: 'completed',
+              planContent: after,
+            ));
+            return;
+          }
+        }
+      } catch (_) {}
+
       finish(RevisionPlanResult(
         requestId: planId,
         status: 'error',
         errorMessage:
-            'Timeout waiting for plan. In n8n, upsert revisionPlans/{planId} with '
-            'status "completed" or "error" after writing dailyTasks.',
+            'Reschedule is taking too long. Check your connection and n8n workflow, '
+            'then try again. The workflow must update revisionPlans/$planId with '
+            'dailyTasks when finished.',
       ));
     });
 
@@ -178,19 +211,26 @@ class RevisionPlanRegenerateClient {
         return;
       }
 
-      // Existing revision plans usually stay Firestore status "completed" (or pending
-      // while dailyTasks already exists — see RevisionPlanResult.fromFirestore).
-      // Do NOT finish on status alone or the listener completes on the first snapshot
-      // before n8n writes updated dailyTasks ("Reschedule overdue" looks like it worked
-      // but nothing changes).
-      final after = jsonEncode(_parseDailyTasksField(data));
-      if (after.isNotEmpty && after != baselineDailyTasksJson) {
-        finish(RevisionPlanResult(
-          requestId: planId,
-          status: 'completed',
-          planContent: after,
-        ));
+      final parsed = _parseDailyTasksField(data);
+      final after = jsonEncode(parsed);
+      if (after.isEmpty || after == baselineDailyTasksJson) return;
+
+      latestPlanContent = after;
+      firstChangeAt ??= DateTime.now();
+
+      if (requiredTaskIds.isEmpty ||
+          dailyTasksContainAllTaskIds(parsed, requiredTaskIds)) {
+        completeWithLatestContent();
+        return;
       }
+
+      // n8n may write in steps; don't wait forever for every overdue id.
+      stabilizationTimer?.cancel();
+      final elapsed = DateTime.now().difference(firstChangeAt!);
+      final wait = elapsed >= _stabilizationAfterChange
+          ? Duration.zero
+          : _stabilizationAfterChange - elapsed;
+      stabilizationTimer = Timer(wait, completeWithLatestContent);
     });
 
     return completer.future;
@@ -199,6 +239,7 @@ class RevisionPlanRegenerateClient {
   Future<RevisionPlanResult> _postRegenerateWebhook(
     Map<String, dynamic> body, {
     required String baselineDailyTasksJson,
+    Set<String> requiredTaskIds = const {},
   }) async {
     final planId = body['planId'] as String;
     final uri = _regenerateWebhookUri();
@@ -225,6 +266,7 @@ class RevisionPlanRegenerateClient {
     return _waitForRegeneratePlan(
       planId: planId,
       baselineDailyTasksJson: baselineDailyTasksJson,
+      requiredTaskIds: requiredTaskIds,
     );
   }
 
@@ -245,6 +287,7 @@ class RevisionPlanRegenerateClient {
 
     final requestId = _generateRequestId();
     final baselineJson = jsonEncode(dailyTasks);
+    final overdueTaskIds = collectOverdueTaskIds(dailyTasks);
     final body = <String, dynamic>{
       ..._regenerateBaseFields(
         userId: userId,
@@ -256,6 +299,7 @@ class RevisionPlanRegenerateClient {
       'existingDailyTasksJson': jsonEncode(dailyTasks),
       'overdueTasks': overdue,
       'overdueTasksJson': jsonEncode(overdue),
+      'overdueTaskIds': overdueTaskIds.toList(),
       'rescheduleOverdue': true,
       'regenerateFullPlan': false,
       'preserveNonOverdueTasks': true,
@@ -265,7 +309,11 @@ class RevisionPlanRegenerateClient {
               'as-is (same date/day bucket, order, and task content).',
     };
 
-    return _postRegenerateWebhook(body, baselineDailyTasksJson: baselineJson);
+    return _postRegenerateWebhook(
+      body,
+      baselineDailyTasksJson: baselineJson,
+      requiredTaskIds: overdueTaskIds,
+    );
   }
 
   Future<RevisionPlanResult> regenerateFullPlan({

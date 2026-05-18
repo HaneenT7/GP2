@@ -1,9 +1,11 @@
-import 'package:flutter/material.dart';// i think we no longar need this file 
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 
+import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
+import '../widgets/revision_plan_exam_day_card.dart';
 import '../services/revision_plan_regenerate_client.dart';
 import '../services/revision_plan_service.dart' show RevisionPlanResult;
 
@@ -29,6 +31,22 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
   List<DateTime> _getWeekDays() {
     final start = _getWeekStart(_selectedDate);
     return List.generate(7, (i) => start.add(Duration(days: i)));
+  }
+
+  DateTime _getWeekStart(DateTime date) {
+    return date.subtract(Duration(days: date.weekday % 7));
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) => sameRevisionCalendarDay(a, b);
+
+  Map<dynamic, dynamic>? _findDayData(
+    List<dynamic> dailyTasks,
+    DateTime date,
+  ) {
+    return revisionPlanDayBucketForDate(
+      dailyTasks,
+      revisionDayDateKey(date),
+    );
   }
 
   @override
@@ -121,12 +139,12 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
                   _buildWeekNavigation(),
                   if (overdueCount > 0)
                     _buildOverdueBanner(overdueCount, planData),
-                  _buildDaysBar(dailyTasks),
+                  _buildDaysBar(dailyTasks, planData),
                   const Divider(height: 1),
                   Expanded(
                     child: _viewMode == 'day'
-                        ? _buildDayView(dailyTasks)
-                        : _buildWeekView(dailyTasks),
+                        ? _buildDayView(dailyTasks, planData)
+                        : _buildWeekView(dailyTasks, planData),
                   ),
                 ],
               );
@@ -337,16 +355,7 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
   }
 
   List<dynamic> _parseDailyTasksFromPlan(Map<String, dynamic> planData) {
-    final raw = planData['dailyTasks'];
-    if (raw is String) {
-      try {
-        return jsonDecode(raw) as List<dynamic>;
-      } catch (_) {
-        return [];
-      }
-    }
-    if (raw is List) return List<dynamic>.from(raw);
-    return [];
+    return parseRevisionPlanDailyTasks(planData);
   }
 
   Future<void> _markRescheduledTasks({
@@ -371,20 +380,24 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
     }
     if (afterDailyTasks.isEmpty) return;
 
-    // n8n often omits or zeroes `availableMinutes` on partial updates; restore from the
-    // snapshot taken before reschedule so days don't show "0 minutes" / no availability.
-    final mergedDays =
-        _mergeBaselineDayMetadataOntoAfter(beforeDailyTasks, afterDailyTasks);
+    final overdueIds = collectOverdueTaskIds(beforeDailyTasks);
+    var mergedDays = mergeOverdueReschedulePlan(
+      beforeDailyTasks: beforeDailyTasks,
+      afterDailyTasks: afterDailyTasks,
+      overdueTaskIds: overdueIds,
+    );
+    mergedDays =
+        _mergeBaselineDayMetadataOntoAfter(beforeDailyTasks, mergedDays);
 
     final beforeDateByTaskId = <String, String>{};
     for (final day in beforeDailyTasks) {
       if (day is! Map) continue;
-      final dateKey = _revisionDayDateKey(day['date']);
+      final dateKey = revisionDayDateKey(day['date']);
       if (dateKey.isEmpty) continue;
       final tasks = day['tasks'] as List<dynamic>? ?? [];
       for (final t in tasks) {
         if (t is! Map) continue;
-        final id = t['taskId']?.toString() ?? '';
+        final id = revisionTaskId(t);
         if (id.isEmpty) continue;
         beforeDateByTaskId[id] = dateKey;
       }
@@ -392,12 +405,12 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
 
     final movedTaskIds = <String>{};
     for (final day in mergedDays) {
-      final dateKey = _revisionDayDateKey(day['date']);
+      final dateKey = revisionDayDateKey(day['date']);
       if (dateKey.isEmpty) continue;
       final tasks = day['tasks'] as List<dynamic>? ?? [];
       for (final t in tasks) {
         if (t is! Map) continue;
-        final id = t['taskId']?.toString() ?? '';
+        final id = revisionTaskId(t);
         if (id.isEmpty) continue;
         final beforeDate = beforeDateByTaskId[id];
         if (beforeDate != null && beforeDate != dateKey) {
@@ -406,19 +419,31 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
       }
     }
 
+    final placedIds = <String>{};
+    for (final day in mergedDays) {
+      if (day is! Map) continue;
+      for (final t in day['tasks'] as List? ?? []) {
+        if (t is Map) {
+          final id = revisionTaskId(t);
+          if (id.isNotEmpty) placedIds.add(id);
+        }
+      }
+    }
+    final stillMissing = overdueIds.difference(placedIds);
+
     final updated = <Map<String, dynamic>>[];
     for (final day in mergedDays) {
-      final dayMap = Map<String, dynamic>.from(day);
+      final dayMap = Map<String, dynamic>.from(day as Map);
       final tasks = dayMap['tasks'] as List<dynamic>? ?? [];
       dayMap['tasks'] = tasks.map((task) {
         final t = Map<String, dynamic>.from(task as Map<dynamic, dynamic>);
-        final id = t['taskId']?.toString() ?? '';
+        final id = revisionTaskId(t);
         if (movedTaskIds.isEmpty) {
           t.remove('rescheduled');
         } else {
           t['rescheduled'] = movedTaskIds.contains(id);
         }
-        return t;
+        return normalizeRevisionTaskMap(t);
       }).toList();
       updated.add(dayMap);
     }
@@ -429,72 +454,82 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
         .update({
       'dailyTasks': storeAsString ? jsonEncode(updated) : updated,
     });
-  }
 
-  /// Normalizes day keys so `2026-05-10` and `2026-05-10T00:00:00.000Z` match.
-  String _revisionDayDateKey(dynamic raw) {
-    final s = raw?.toString().trim() ?? '';
-    if (s.isEmpty) return '';
-    try {
-      final head = s.contains('T') ? s.substring(0, s.indexOf('T')) : s;
-      final d = DateTime.parse(head);
-      final y = d.year.toString().padLeft(4, '0');
-      final m = d.month.toString().padLeft(2, '0');
-      final day = d.day.toString().padLeft(2, '0');
-      return '$y-$m-$day';
-    } catch (_) {
-      return s;
+    if (stillMissing.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${stillMissing.length} overdue task(s) could not be placed. '
+            'Try again or reschedule with more availability.',
+          ),
+          backgroundColor: Colors.deepOrange.shade800,
+        ),
+      );
+    } else if (movedTaskIds.isNotEmpty && mounted) {
+      final firstMoved =
+          firstRevisionPlanRescheduledDay(updated) ??
+              firstRevisionPlanRescheduledDay(mergedDays);
+      if (firstMoved != null) {
+        setState(() {
+          _selectedDate = DateTime(
+            firstMoved.year,
+            firstMoved.month,
+            firstMoved.day,
+          );
+          _viewMode = 'day';
+        });
+      }
     }
   }
 
+  String _revisionDayDateKey(dynamic raw) => revisionDayDateKey(raw);
+
   int? _asIntMinutes(dynamic v) {
-    if (v == null) return null;
+    if (v is int) return v;
     if (v is num) return v.round();
-    return int.tryParse(v.toString().trim());
+    return int.tryParse(v?.toString() ?? '');
   }
 
-  /// Copies `availableMinutes` and weekday `day` from [beforeDailyTasks] when n8n drops them.
   List<Map<String, dynamic>> _mergeBaselineDayMetadataOntoAfter(
     List<dynamic> beforeDailyTasks,
     List<dynamic> afterDailyTasks,
   ) {
-    final baseline = <String, Map<String, dynamic>>{};
+    final beforeByDate = <String, Map<String, dynamic>>{};
     for (final day in beforeDailyTasks) {
       if (day is! Map) continue;
       final key = _revisionDayDateKey(day['date']);
       if (key.isEmpty) continue;
-      baseline[key] = Map<String, dynamic>.from(day);
+      beforeByDate[key] = Map<String, dynamic>.from(day);
     }
 
-    final out = <Map<String, dynamic>>[];
-    for (final day in afterDailyTasks) {
-      if (day is! Map) continue;
-      final dm = Map<String, dynamic>.from(day);
+    return afterDailyTasks.map((day) {
+      final dm = Map<String, dynamic>.from(day as Map);
       final key = _revisionDayDateKey(dm['date']);
-      final prev = key.isEmpty ? null : baseline[key];
+      final prev = beforeByDate[key];
       if (prev != null) {
         final prevAm = _asIntMinutes(prev['availableMinutes']);
         final curRaw = dm['availableMinutes'];
         final curAm = _asIntMinutes(curRaw);
-
         if (!dm.containsKey('availableMinutes') || curRaw == null) {
           dm['availableMinutes'] = prev['availableMinutes'];
-        } else if (curAm != null && curAm <= 0 && prevAm != null && prevAm > 0) {
+        } else if (curAm == 0 && prevAm != null && prevAm > 0) {
           dm['availableMinutes'] = prev['availableMinutes'];
         }
-
-        final pd = prev['day']?.toString().trim() ?? '';
-        final cd = dm['day']?.toString().trim() ?? '';
-        if (cd.isEmpty && pd.isNotEmpty) {
+        if (prev['dayOfWeek'] != null &&
+            (dm['dayOfWeek'] == null ||
+                dm['dayOfWeek'].toString().trim().isEmpty)) {
+          dm['dayOfWeek'] = prev['dayOfWeek'];
+        }
+        if (prev['day'] != null && dm['day'] == null) {
           dm['day'] = prev['day'];
         }
       }
-      out.add(dm);
-    }
-    return out;
+      return dm;
+    }).toList();
   }
+
   Widget _buildWeekNavigation() {
-  return Container(
+    return Container(
     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -534,10 +569,13 @@ class _RevisionPlanCalendarPageState extends State<RevisionPlanCalendarPage> {
         ),
       ],
     ),
-  );
-}
-/////////////////////////////////////////////////////////////////////////////////
-Widget _buildDaysBar(List<dynamic> dailyTasks) {
+    );
+  }
+
+  Widget _buildDaysBar(
+    List<dynamic> dailyTasks,
+    Map<String, dynamic> planData,
+  ) {
   final weekDays = _getWeekDays();
 
   return Padding(
@@ -546,15 +584,18 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
       children: List.generate(weekDays.length, (index) {
         final day = weekDays[index];
         final isSelected = _isSameDay(day, _selectedDate);
+        final isExamDay = isRevisionPlanExamDay(day, planData);
         final dayData = _findDayData(dailyTasks, day);
         final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
         final hasOverdueOnDay = weekDayHasOverdueIncomplete(dailyTasks, day);
         final tileBackground = hasOverdueOnDay
             ? (isSelected ? Colors.deepOrange.shade100 : Colors.deepOrange.shade50)
             : (isSelected ? Colors.grey[300]! : Colors.grey[100]!);
-        final tileBorder = hasOverdueOnDay
-            ? (isSelected ? Colors.deepOrange.shade700 : Colors.deepOrange.shade300)
-            : (isSelected ? Colors.black87 : Colors.grey[300]!);
+        final tileBorder = isExamDay
+            ? (isSelected ? Colors.amber.shade800 : Colors.amber.shade400)
+            : hasOverdueOnDay
+                ? (isSelected ? Colors.deepOrange.shade700 : Colors.deepOrange.shade300)
+                : (isSelected ? Colors.black87 : Colors.grey[300]!);
 
         return Expanded(
           child: Padding(
@@ -570,11 +611,15 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: tileBackground,
+                  color: isExamDay
+                      ? (isSelected
+                          ? Colors.amber.shade100
+                          : Colors.amber.shade50)
+                      : tileBackground,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: tileBorder,
-                    width: isSelected ? 1.5 : 1,
+                    width: (isSelected || isExamDay) ? 1.5 : 1,
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -608,8 +653,17 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                       ],
                     ),
 
-                    // Overdue (past day, incomplete) vs scheduled tasks
-                    if (hasOverdueOnDay)
+                    if (isExamDay)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Icon(
+                          Icons.school_rounded,
+                          size: 14,
+                          color: Colors.amber.shade800,
+                        ),
+                      )
+                    else if (hasOverdueOnDay)
                       Positioned(
                         top: 4,
                         right: 4,
@@ -645,7 +699,19 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
     ),
   );
 }
-  Widget _buildDayView(List<dynamic> dailyTasks) {
+  Widget _buildDayView(
+    List<dynamic> dailyTasks,
+    Map<String, dynamic> planData,
+  ) {
+    if (isRevisionPlanExamDay(_selectedDate, planData)) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: RevisionPlanExamDayCard(planData: planData),
+        ),
+      );
+    }
+
     final dayData = _findDayData(dailyTasks, _selectedDate);
 
     if (dayData == null) {
@@ -764,7 +830,10 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
     );
   }
 
-  Widget _buildWeekView(List<dynamic> dailyTasks) {
+  Widget _buildWeekView(
+    List<dynamic> dailyTasks,
+    Map<String, dynamic> planData,
+  ) {
     final weekStart = _getWeekStart(_selectedDate);
     final weekDays = List.generate(7, (i) => weekStart.add(Duration(days: i)));
 
@@ -846,10 +915,17 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        'No tasks',
+                        isRevisionPlanExamDay(day, planData)
+                            ? 'Exam day'
+                            : 'No tasks',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey.shade500,
+                          fontWeight: isRevisionPlanExamDay(day, planData)
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isRevisionPlanExamDay(day, planData)
+                              ? Colors.amber.shade800
+                              : Colors.grey.shade500,
                         ),
                       ),
                     )
@@ -876,7 +952,7 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                                 : overdue
                                     ? Colors.deepOrange
                                     : isRescheduled
-                                        ? Colors.indigo
+                                        ? RevisionTaskCardStyle.rescheduledBorder
                                     : Colors.grey,
                           ),
                           const SizedBox(width: 8),
@@ -893,7 +969,7 @@ Widget _buildDaysBar(List<dynamic> dailyTasks) {
                                     : overdue
                                         ? Colors.deepOrange.shade900
                                         : isRescheduled
-                                            ? Colors.indigo.shade700
+                                            ? RevisionTaskCardStyle.rescheduledTitle
                                         : Colors.black87,
                                 fontWeight:
                                     overdue ? FontWeight.w600 : FontWeight.normal,
@@ -939,31 +1015,29 @@ Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
 
     return Material(
       color: Colors.deepOrange.shade50,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.schedule, size: 20, color: Colors.deepOrange.shade800),
-            const SizedBox(width: 10),
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => _jumpToFirstOverdueDay(dailyTasks),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    count == 1
-                        ? '1 overdue task (past days, not completed)'
-                        : '$count overdue tasks (past days, not completed)',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.deepOrange.shade900,
-                      fontWeight: FontWeight.w600,
-                    ),
+      child: InkWell(
+        onTap: () => _jumpToFirstOverdueDay(dailyTasks),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.schedule, size: 20, color: Colors.deepOrange.shade800),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  count == 1
+                      ? '1 overdue task (past days, not completed)'
+                      : '$count overdue tasks (past days, not completed)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.deepOrange.shade900,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-            ),
+              Icon(Icons.chevron_right,
+                  color: Colors.deepOrange.shade700, size: 22),
+              const SizedBox(width: 4),
             TextButton(
               onPressed: _regeneratingPlan
                   ? null
@@ -979,37 +1053,18 @@ Widget _buildOverdueBanner(int count, Map<String, dynamic> planData) {
           ],
         ),
       ),
+    ),
     );
   }
 
-DateTime? _firstOverdueDay(List<dynamic> dailyTasks) {
-  DateTime? first;
-  for (final day in dailyTasks) {
-    if (day is! Map) continue;
-    final dateStr = day['date']?.toString();
-    if (dateStr == null) continue;
-    final dayDate = DateTime.tryParse(dateStr);
-    if (dayDate == null) continue;
-    final tasks = day['tasks'] as List<dynamic>? ?? [];
-    final hasOverdue = tasks.any(
-      (t) => t is Map && isRevisionTaskOverdue(dayDate, t),
-    );
-    if (!hasOverdue) continue;
-    if (first == null || dayDate.isBefore(first)) {
-      first = dayDate;
-    }
+  void _jumpToFirstOverdueDay(List<dynamic> dailyTasks) {
+    final overdueDay = firstRevisionPlanOverdueDay(dailyTasks);
+    if (overdueDay == null) return;
+    setState(() {
+      _selectedDate = DateTime(overdueDay.year, overdueDay.month, overdueDay.day);
+      _viewMode = 'day';
+    });
   }
-  return first;
-}
-
-void _jumpToFirstOverdueDay(List<dynamic> dailyTasks) {
-  final overdueDay = _firstOverdueDay(dailyTasks);
-  if (overdueDay == null) return;
-  setState(() {
-    _selectedDate = DateTime(overdueDay.year, overdueDay.month, overdueDay.day);
-    _viewMode = 'day';
-  });
-}
 
 Widget _buildTaskCard(
   Map<dynamic, dynamic> task,
@@ -1022,7 +1077,6 @@ Widget _buildTaskCard(
   final course = task['course'] ?? 'Study Task';
 
   const greenCheck = Color(0xFF52C41A);
-  const greenBg = Color(0xFFE6F7E9);
   const greyButtonBg = Color(0xFFF5F5F5);
 
   return Padding(
@@ -1030,17 +1084,23 @@ Widget _buildTaskCard(
     child: Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: isCompleted ? greenBg : Colors.white,
+        color: RevisionTaskCardStyle.background(
+          isCompleted: isCompleted,
+          isOverdue: isOverdue,
+          isRescheduled: isRescheduled,
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted
-              ? Colors.transparent
-              : isOverdue
-                  ? Colors.deepOrange.shade300
-                  : isRescheduled
-                      ? Colors.indigo.shade200
-                  : const Color(0xFFE8E8E8),
-          width: (isOverdue || isRescheduled) && !isCompleted ? 2 : 1,
+          color: RevisionTaskCardStyle.border(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
+          width: RevisionTaskCardStyle.borderWidth(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
         ),
         boxShadow: [
           BoxShadow(
@@ -1093,13 +1153,11 @@ Widget _buildTaskCard(
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: isCompleted
-                              ? Colors.grey
-                              : isOverdue
-                                  ? Colors.deepOrange.shade900
-                                  : isRescheduled
-                                      ? Colors.indigo.shade700
-                                  : Colors.black87,
+                          color: RevisionTaskCardStyle.title(
+                            isCompleted: isCompleted,
+                            isOverdue: isOverdue,
+                            isRescheduled: isRescheduled,
+                          ),
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -1137,7 +1195,7 @@ Widget _buildTaskCard(
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.indigo.shade50,
+                            color: RevisionTaskCardStyle.rescheduledBadgeBackground,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -1145,7 +1203,7 @@ Widget _buildTaskCard(
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Colors.indigo.shade700,
+                              color: RevisionTaskCardStyle.rescheduledTitle,
                             ),
                           ),
                         ),
@@ -1267,7 +1325,6 @@ Future<void> _toggleTaskCompletion(int taskIndex, bool completed) async {
     );
   }
 }
-
 
 Future<void> _checkAndMarkPlanCompleted(
   List<dynamic> dailyTasks,
@@ -1477,22 +1534,4 @@ Future<void> _moveTaskToDate({
     );
   }
 }
-
-  Map<dynamic, dynamic>? _findDayData(List<dynamic> dailyTasks, DateTime date) {
-    for (var day in dailyTasks) {
-      final dayDate = DateTime.parse(day['date']);
-      if (_isSameDay(dayDate, date)) {
-        return day;
-      }
-    }
-    return null;
-  }
-
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  DateTime _getWeekStart(DateTime date) {
-    return date.subtract(Duration(days: date.weekday % 7));
-  }
 }

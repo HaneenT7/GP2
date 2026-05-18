@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'availability_calendar_dialog.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
+import 'package:gp2_watad/widgets/revision_plan_exam_day_card.dart';
 import 'package:gp2_watad/services/revision_plan_service.dart';
+import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
 import '../services/revision_plan_regenerate_client.dart';
 
@@ -223,6 +225,23 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
   String _toDateKey(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 
+  void _jumpToFirstOverdueDay(List<dynamic> dailyTasks) {
+    final overdueDay = firstRevisionPlanOverdueDay(dailyTasks);
+    if (overdueDay == null) return;
+    final d = DateTime(overdueDay.year, overdueDay.month, overdueDay.day);
+    setState(() {
+      final daysSinceSunday = d.weekday % 7;
+      _currentWeekMonday = d.subtract(Duration(days: daysSinceSunday));
+      _generateWeekDates();
+      for (var i = 0; i < _weekDates.length; i++) {
+        if (_toDateKey(_weekDates[i]) == _toDateKey(d)) {
+          _selectedDayIndex = i;
+          break;
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_planStream == null) {
@@ -240,17 +259,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         }
 
         final planData = snapshot.data!.data() as Map<String, dynamic>;
-        final rawTasks = planData['dailyTasks'];
-        List<dynamic> dailyTasks = [];
-        if (rawTasks is String) {
-          try {
-final List dailyTasks = rawTasks is String 
-        ? jsonDecode(rawTasks) 
-        : (rawTasks as List);
-            } catch (e) {print("Error decoding tasks: $e");}
-        } else if (rawTasks is List) {
-          dailyTasks = rawTasks;
-        }
+        final dailyTasks = parseRevisionPlanDailyTasks(planData);
 
         final selectedDate = _weekDates[_selectedDayIndex];
         final dateKey = _toDateKey(selectedDate);
@@ -286,7 +295,7 @@ final List dailyTasks = rawTasks is String
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildDaysBar(dailyTasks),
+                        _buildDaysBar(dailyTasks, planData),
                         const SizedBox(height: 16),
                         _buildOverdueInfoBar(dailyTasks, dateKey),
                       ],
@@ -363,17 +372,22 @@ final List dailyTasks = rawTasks is String
         : DateTime.parse(rawDate ?? DateTime.now().toString());
     final daysLeft = examDate.difference(DateTime.now()).inDays;
 
-    int total = 0, completed = 0, overdue = 0;
+    int total = 0, completed = 0;
+    final seenForTotal = <String>{};
     for (var day in dailyTasks) {
-      final tasks = day['tasks'] as List<dynamic>? ?? [];
       final dayDate =
           DateTime.tryParse(day['date']?.toString() ?? '') ?? DateTime.now();
-      total += tasks.length;
-      for (var t in tasks) {
+      final dateKey = revisionDayDateKey(day['date']);
+      for (var t in revisionPlanTasksOnDate(dailyTasks, dateKey)) {
+        final id = revisionTaskId(t);
+        final dedupe = id.isNotEmpty ? id : '${t['title']}_$dateKey';
+        if (seenForTotal.contains(dedupe)) continue;
+        seenForTotal.add(dedupe);
+        total++;
         if (t['completed'] == true) completed++;
-        if (_isDateBeforeToday(dayDate) && t['completed'] != true) overdue++;
       }
     }
+    final overdue = countOverdueTasks(dailyTasks);
     final pct = total > 0 ? ((completed / total) * 100).round() : 0;
 
     return Container(
@@ -692,26 +706,21 @@ final List dailyTasks = rawTasks is String
 
   // ── Days bar — matches DailyTasksSection style exactly ───────────────────
 
-  Widget _buildDaysBar(List<dynamic> dailyTasks) {
-  return Padding(
+  Widget _buildDaysBar(
+    List<dynamic> dailyTasks,
+    Map<String, dynamic> planData,
+  ) {
+    return Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
     child: Row(
       children: List.generate(_weekDates.length, (index) {
         final date = _weekDates[index];
         final isSelected = index == _selectedDayIndex;
+        final isExamDay = isRevisionPlanExamDay(date, planData);
         final dateKey = _toDateKey(date);
 
-        // Count tasks for dot indicator
-        dynamic dayData;
-        for (final day in dailyTasks) {
-          if (day['date']?.toString().startsWith(dateKey) == true) {
-            dayData = day;
-            break;
-          }
-        }
-        final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
-        final hasOverdue = _isDateBeforeToday(date) &&
-            tasks.any((t) => t['completed'] != true);
+        final tasks = revisionPlanTasksOnDate(dailyTasks, dateKey);
+        final hasOverdue = countOverdueTasksOnDate(dailyTasks, date) > 0;
         final hasTasks = tasks.isNotEmpty;
 
         return Expanded(
@@ -732,10 +741,12 @@ final List dailyTasks = rawTasks is String
                           : Colors.grey[50],
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF9333EA)
-                            : Colors.grey[300]!,
-                        width: isSelected ? 2 : 1,
+                        color: isExamDay
+                            ? Colors.amber.shade700
+                            : isSelected
+                                ? const Color(0xFF9333EA)
+                                : Colors.grey[300]!,
+                        width: (isSelected || isExamDay) ? 2 : 1,
                       ),
                     ),
                     child: Column(
@@ -763,7 +774,17 @@ final List dailyTasks = rawTasks is String
                     ),
                   ),
                   // Dot indicator positioned relative to the expanded container
-                  if (hasTasks)
+                  if (isExamDay)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Icon(
+                        Icons.school_rounded,
+                        size: 16,
+                        color: Colors.amber.shade800,
+                      ),
+                    )
+                  else if (hasTasks)
                     Positioned(
                       top: 6,
                       right: 6,
@@ -790,54 +811,51 @@ final List dailyTasks = rawTasks is String
   // ── Overdue info bar ─────────────────────────────────────────────────────
 
   Widget _buildOverdueInfoBar(List<dynamic> dailyTasks, String dateKey) {
-    int overdueOnSelectedDay = 0;
-    int totalOverdue = 0;
-
-    for (final day in dailyTasks) {
-      final dayDateKey = day['date']?.toString();
-      if (dayDateKey == null) continue;
-      final dayDate = DateTime.tryParse(dayDateKey);
-      if (dayDate == null || !_isDateBeforeToday(dayDate)) continue;
-      final tasks = day['tasks'] as List<dynamic>? ?? [];
-      for (final task in tasks) {
-        if (task['completed'] != true) {
-          totalOverdue++;
-          if (dayDateKey.startsWith(dateKey)) overdueOnSelectedDay++;
-        }
-      }
-    }
+    final totalOverdue = countOverdueTasks(dailyTasks);
+    final selectedDate = _weekDates[_selectedDayIndex];
+    final overdueOnSelectedDay =
+        countOverdueTasksOnDate(dailyTasks, selectedDate);
 
     if (totalOverdue == 0) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.deepOrange.shade50,
+      child: Material(
+        color: Colors.deepOrange.shade50,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.deepOrange.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded,
-                color: Colors.deepOrange.shade800, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                overdueOnSelectedDay > 0
-                    ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
-                    : 'Total overdue tasks: $totalOverdue',
-                style: TextStyle(
-                  color: Colors.deepOrange.shade900,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
+          onTap: () => _jumpToFirstOverdueDay(dailyTasks),
+          child: Container(
+            width: double.infinity,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.deepOrange.shade200),
             ),
-          ],
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    color: Colors.deepOrange.shade800, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    overdueOnSelectedDay > 0
+                        ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
+                        : 'Total overdue tasks: $totalOverdue',
+                    style: TextStyle(
+                      color: Colors.deepOrange.shade900,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right,
+                    color: Colors.deepOrange.shade700, size: 22),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -850,15 +868,20 @@ final List dailyTasks = rawTasks is String
     String dateKey,
     Map<String, dynamic> planData,
   ) {
-    // Find day data
-    dynamic dayData;
-    for (final day in dailyTasks) {
-      if (day['date']?.toString().startsWith(dateKey) == true) {
-        dayData = day;
-        break;
-      }
+    final selectedDate = _weekDates[_selectedDayIndex];
+    if (isRevisionPlanExamDay(selectedDate, planData)) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: RevisionPlanExamDayCard(planData: planData),
+          ),
+        ),
+      );
     }
 
+    final dayData = revisionPlanDayBucketForDate(dailyTasks, dateKey);
     final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
 
     if (tasks.isEmpty) {
@@ -883,8 +906,6 @@ final List dailyTasks = rawTasks is String
       );
     }
 
-    final selectedDate = _weekDates[_selectedDayIndex];
-
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       sliver: SliverList(
@@ -892,7 +913,7 @@ final List dailyTasks = rawTasks is String
           (context, index) {
             final task = tasks[index] as Map<dynamic, dynamic>;
             final isCompleted = task['completed'] == true;
-            final isOverdue = _isDateBeforeToday(selectedDate) &&
+            final isOverdue = _isDateBeforeToday(_weekDates[_selectedDayIndex]) &&
                 !isCompleted;
             final isRescheduled = task['rescheduled'] == true;
 
@@ -1027,18 +1048,93 @@ final List dailyTasks = rawTasks is String
 
   Future<void> _rescheduleOverdue(
       Map<String, dynamic> planData, List<dynamic> dailyTasks) async {
+    final beforeDailyTasks = List<dynamic>.from(dailyTasks);
+    final wasString = planData['dailyTasks'] is String;
     await _runRegenerate(
       status: 'Rescheduling overdue tasks…',
       action: () => _regenerateClient.rescheduleOverdueTasks(
           planId: widget.planId, planData: planData),
       successMessage: 'Overdue tasks rescheduled.',
+      onCompleted: (result) async {
+        await _applyRescheduleMerge(
+          beforeDailyTasks: beforeDailyTasks,
+          result: result,
+          storeAsString: wasString,
+        );
+      },
     );
+  }
+
+  Future<void> _applyRescheduleMerge({
+    required List<dynamic> beforeDailyTasks,
+    required RevisionPlanResult result,
+    required bool storeAsString,
+  }) async {
+    List<dynamic> afterDailyTasks = [];
+    if (result.planContent != null && result.planContent!.trim().isNotEmpty) {
+      try {
+        afterDailyTasks = jsonDecode(result.planContent!) as List<dynamic>;
+      } catch (_) {}
+    }
+    if (afterDailyTasks.isEmpty) {
+      final snap = await FirebaseFirestore.instance
+          .collection('revisionPlans')
+          .doc(widget.planId)
+          .get();
+      final data = snap.data();
+      if (data == null) return;
+      afterDailyTasks = parseRevisionPlanDailyTasks(data);
+    }
+    if (afterDailyTasks.isEmpty) return;
+
+    final overdueIds = collectOverdueTaskIds(beforeDailyTasks);
+    final merged = mergeOverdueReschedulePlan(
+      beforeDailyTasks: beforeDailyTasks,
+      afterDailyTasks: afterDailyTasks,
+      overdueTaskIds: overdueIds,
+    );
+
+    await FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .doc(widget.planId)
+        .update({
+      'dailyTasks': storeAsString ? jsonEncode(merged) : merged,
+    });
+
+    final placed = dailyTasksContainAllTaskIds(merged, overdueIds);
+    if (!placed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Some overdue tasks could not be placed. Check later days or try again.',
+          ),
+          backgroundColor: Colors.deepOrange.shade800,
+        ),
+      );
+      return;
+    }
+
+    final jumpDay = firstRevisionPlanRescheduledDay(merged);
+    if (jumpDay == null) return;
+
+    setState(() {
+      final daysSinceSunday = jumpDay.weekday % 7;
+      _currentWeekMonday = jumpDay.subtract(Duration(days: daysSinceSunday));
+      _generateWeekDates();
+      for (var i = 0; i < _weekDates.length; i++) {
+        if (sameRevisionCalendarDay(_weekDates[i], jumpDay)) {
+          _selectedDayIndex = i;
+          break;
+        }
+      }
+    });
   }
 
   Future<void> _runRegenerate({
     required String status,
     required Future<RevisionPlanResult> Function() action,
     required String successMessage,
+    Future<void> Function(RevisionPlanResult result)? onCompleted,
   }) async {
     setState(() {
       _regeneratingPlan = true;
@@ -1048,6 +1144,9 @@ final List dailyTasks = rawTasks is String
       final result = await action();
       if (!mounted) return;
       if (result.status == 'completed') {
+        if (onCompleted != null) {
+          await onCompleted(result);
+        }
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(successMessage)));
       } else {
@@ -1244,22 +1343,27 @@ class _TaskCard extends StatelessWidget {
     final pages = task['pages']?.toString() ?? '';
  
     const greenCheck = Color(0xFF52C41A);
-    const greenBg = Color(0xFFE6F7E9);
- 
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: isCompleted ? greenBg : Colors.white,
+        color: RevisionTaskCardStyle.background(
+          isCompleted: isCompleted,
+          isOverdue: isOverdue,
+          isRescheduled: isRescheduled,
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted
-              ? Colors.transparent
-              : isOverdue
-                  ? Colors.deepOrange.shade300
-                  : isRescheduled
-                      ? Colors.indigo.shade200
-                      : const Color(0xFFE8E8E8),
-          width: (isOverdue || isRescheduled) && !isCompleted ? 2 : 1,
+          color: RevisionTaskCardStyle.border(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
+          width: RevisionTaskCardStyle.borderWidth(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
         ),
         boxShadow: [
           BoxShadow(
@@ -1316,13 +1420,11 @@ class _TaskCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: isCompleted
-                              ? Colors.grey
-                              : isOverdue
-                                  ? Colors.deepOrange.shade900
-                                  : isRescheduled
-                                      ? Colors.indigo.shade700
-                                      : Colors.black87,
+                          color: RevisionTaskCardStyle.title(
+                            isCompleted: isCompleted,
+                            isOverdue: isOverdue,
+                            isRescheduled: isRescheduled,
+                          ),
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -1352,14 +1454,14 @@ class _TaskCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.indigo.shade50,
+                          color: RevisionTaskCardStyle.rescheduledBadgeBackground,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('Rescheduled',
                             style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.indigo.shade700)),
+                                color: RevisionTaskCardStyle.rescheduledTitle)),
                       ),
                     ],
                   ],

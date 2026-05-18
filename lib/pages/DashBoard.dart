@@ -11,6 +11,7 @@ import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
 import '../services/exam_notification_scheduler.dart';
+import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
 
 class DashBoard extends StatefulWidget {
@@ -556,6 +557,30 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
+  void _jumpToFirstOverdueDay(Iterable<QueryDocumentSnapshot> planDocs) {
+    DateTime? first;
+    for (final doc in planDocs) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (isRevisionPlanExamPassed(data)) continue;
+      final day = firstRevisionPlanOverdueDay(parseRevisionPlanDailyTasks(data));
+      if (day == null) continue;
+      final d = DateTime(day.year, day.month, day.day);
+      if (first == null || d.isBefore(first)) first = d;
+    }
+    if (first == null) return;
+    setState(() {
+      final daysSinceSunday = first!.weekday % 7;
+      _currentWeekMonday = first.subtract(Duration(days: daysSinceSunday));
+      _generateWeekDates();
+      for (var i = 0; i < _weekDates.length; i++) {
+        if (sameRevisionCalendarDay(_weekDates[i], first)) {
+          _selectedDayIndex = i;
+          break;
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedDate = _weekDates[_selectedDayIndex];
@@ -598,8 +623,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
           return const SizedBox.shrink();
 
-        int overdueOnSelectedDay = 0;
-        int totalOverdue = 0;
+        var overdueOnSelectedDay = 0;
+        var totalOverdue = 0;
+        final selectedDate = DateTime.tryParse(dateKey);
 
         for (final doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -607,49 +633,51 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           final daysList = parseRevisionPlanDailyTasks(data);
           totalOverdue += countOverdueTasks(daysList);
 
-          for (final day in daysList) {
-            if (day is! Map) continue;
-            final dayDateKey = day['date']?.toString();
-            if (dayDateKey == null || dayDateKey != dateKey) continue;
-            final dayDate = DateTime.tryParse(dayDateKey);
-            if (dayDate == null) continue;
-            final tasks = day['tasks'] as List<dynamic>? ?? [];
-            for (final task in tasks) {
-              if (task is Map &&
-                  isRevisionTaskOverdue(dayDate, task)) {
-                overdueOnSelectedDay++;
-              }
-            }
+          if (selectedDate != null) {
+            overdueOnSelectedDay += countOverdueTasksOnDate(daysList, selectedDate);
           }
         }
 
         if (totalOverdue == 0) return const SizedBox.shrink();
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.deepOrange.shade50,
+        final planDocs = snapshot.data!.docs;
+
+        return Material(
+          color: Colors.deepOrange.shade50,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.deepOrange.shade200),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.warning_amber_rounded,
-                  color: Colors.deepOrange.shade800, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  overdueOnSelectedDay > 0
-                      ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
-                      : 'Total overdue tasks: $totalOverdue',
-                  style: TextStyle(
-                      color: Colors.deepOrange.shade900,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13),
-                ),
+            onTap: () => _jumpToFirstOverdueDay(planDocs),
+            child: Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.deepOrange.shade200),
               ),
-            ],
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.deepOrange.shade800, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      overdueOnSelectedDay > 0
+                          ? 'Overdue on selected day: $overdueOnSelectedDay  •  Total overdue: $totalOverdue'
+                          : 'Total overdue tasks: $totalOverdue',
+                      style: TextStyle(
+                        color: Colors.deepOrange.shade900,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right,
+                      color: Colors.deepOrange.shade700, size: 22),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -678,11 +706,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           final materialTitle = data['materialTitle']?.toString();
           try {
             final daysList = parseRevisionPlanDailyTasks(data);
-            final dayData = daysList.firstWhere((day) => day['date'] == dateKey,
-                orElse: () => null);
-            if (dayData != null && dayData['tasks'] != null) {
-              final dayDate = DateTime.tryParse(dateKey);
-              for (var task in dayData['tasks']) {
+            final dayDate = DateTime.tryParse(dateKey);
+            final tasksForDay = revisionPlanTasksOnDate(daysList, dateKey);
+            if (tasksForDay.isNotEmpty) {
+              for (var task in tasksForDay) {
                 final taskMap = task is Map ? task : <String, dynamic>{};
                 dailyTaskWidgets.add(_buildTaskCard(
                   title: task['title'],
@@ -697,6 +724,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                       dayDate != null &&
                       task is Map &&
                       isRevisionTaskOverdue(dayDate, taskMap),
+                  isRescheduled: task['rescheduled'] == true,
                   taskId: task['taskId'],
                   docId: doc.id,
                   fullDailyTasks: daysList,
@@ -735,7 +763,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     required String pdfName, 
     required String pages, 
     required bool isCompleted,
-    required bool isOverdue, 
+    required bool isOverdue,
+    required bool isRescheduled,
     required String taskId,
     required String docId,
     required List fullDailyTasks,
@@ -744,15 +773,23 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isCompleted ? const Color(0xFFE6F7E9) : Colors.white,
+        color: RevisionTaskCardStyle.background(
+          isCompleted: isCompleted,
+          isOverdue: isOverdue,
+          isRescheduled: isRescheduled,
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompleted
-              ? Colors.green.shade100
-              : (isOverdue
-                  ? Colors.deepOrange.shade300
-                  : const Color(0xFFE8E8E8)),
-          width: isOverdue && !isCompleted ? 1.5 : 1,
+          color: RevisionTaskCardStyle.border(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
+          width: RevisionTaskCardStyle.borderWidth(
+            isCompleted: isCompleted,
+            isOverdue: isOverdue,
+            isRescheduled: isRescheduled,
+          ),
         ),
       ),
       child: Row(
@@ -776,8 +813,18 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             child: Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Icon(
-                isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isCompleted ? Colors.green : Colors.grey,
+                isCompleted
+                    ? Icons.check_circle
+                    : isRescheduled
+                        ? Icons.schedule
+                        : Icons.radio_button_unchecked,
+                color: isCompleted
+                    ? Colors.green
+                    : RevisionTaskCardStyle.iconAccent(
+                            isOverdue: isOverdue,
+                            isRescheduled: isRescheduled,
+                          ) ??
+                        Colors.grey,
               ),
             ),
           ),
@@ -786,15 +833,46 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                    color: isCompleted
-                        ? Colors.green.shade700
-                        : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          decoration:
+                              isCompleted ? TextDecoration.lineThrough : null,
+                          color: isCompleted
+                              ? Colors.green.shade700
+                              : RevisionTaskCardStyle.title(
+                                  isCompleted: isCompleted,
+                                  isOverdue: isOverdue,
+                                  isRescheduled: isRescheduled,
+                                ),
+                        ),
+                      ),
+                    ),
+                    if (isRescheduled && !isCompleted)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: RevisionTaskCardStyle.rescheduledBadgeBackground,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Rescheduled',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: RevisionTaskCardStyle.rescheduledTitle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 // Displaying Folder and PDF Name

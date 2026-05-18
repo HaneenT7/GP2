@@ -22,31 +22,20 @@ class DashBoard extends StatefulWidget {
 class _DashBoardState extends State<DashBoard> {
   int _selectedIndex = 0;
 
- @override
+  @override
   void initState() {
     super.initState();
-    
-    // 🚀 الحل النهائي: تأجيل الاستدعاء بذكاء حتى يستقر الفايربيز وينتهي بناء الواجهة
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      print('🟢 [DashBoard] Frame rendered. Waiting 1 second for Firebase Auth stabilization...');
-      await Future.delayed(const Duration(seconds: 1)); 
-      
+      await Future.delayed(const Duration(seconds: 1));
       try {
-        print('🟢 [DashBoard] Triggering NotificationService().initialize() now...');
         await NotificationService().initialize();
-        print('🟢 [DashBoard] NotificationService execution requested successfully.');
       } catch (e) {
-        print('❌ [DashBoard] Error during notification initialization: $e');
+        debugPrint('❌ [DashBoard] Error during notification initialization: $e');
       }
     });
   }
 
-  // @override
-  // void initState() {
-  //   super.initState();
-  // }
-
-  // Same order as IndexedStack children
   static const _pageTitles = [
     'Dashboard',
     'Course Folder',
@@ -60,7 +49,7 @@ class _DashBoardState extends State<DashBoard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F2F8), // off-white lavender base
+      backgroundColor: const Color(0xFFF4F2F8),
       body: Row(
         children: [
           CustomSidebar(
@@ -73,10 +62,8 @@ class _DashBoardState extends State<DashBoard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Transparent topbar — part of the frame layer
                   _buildTopBar(),
                   const SizedBox(height: 16),
-                  // The floating white island
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -84,14 +71,12 @@ class _DashBoardState extends State<DashBoard> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color:
-                                const Color(0xFF553C76).withValues(alpha: 0.08),
+                            color: const Color(0xFF553C76).withValues(alpha: 0.08),
                             blurRadius: 24,
                             offset: const Offset(0, 2),
                           ),
                           BoxShadow(
-                            color:
-                                const Color(0xFF553C76).withValues(alpha: 0.05),
+                            color: const Color(0xFF553C76).withValues(alpha: 0.05),
                             blurRadius: 0,
                             spreadRadius: 1,
                           ),
@@ -124,34 +109,74 @@ class _DashBoardState extends State<DashBoard> {
       ),
     );
   }
+Widget _buildTopBar() {
+  final user = FirebaseAuth.instance.currentUser;
 
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            _pageTitles[_selectedIndex], // ← dynamic title
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF2D1F3D),
-              letterSpacing: -0.3,
-            ),
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          _pageTitles[_selectedIndex],
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF2D1F3D),
+            letterSpacing: -0.3,
           ),
+        ),
+        if (user != null)
+          StreamBuilder<QuerySnapshot>(
+            // الاستماع فقط للإشعارات غير المقروءة الخاصة بهذا المستخدم
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('userId', isEqualTo: user.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              // التحقق مما إذا كان هناك أي إشعار غير مقروء
+              final hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    color: const Color(0xFF553C76),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                    ),
+                  ),
+                  // إذا وجد إشعار غير مقروء، نظهر النقطة الحمراء الصغيرة في الزاوية
+                  if (hasUnread)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          )
+        else
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
             color: const Color(0xFF553C76),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsPage()),
-            ),
+            onPressed: () {},
           ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 }
 
 class DashboardHomeContent extends StatelessWidget {
@@ -221,7 +246,6 @@ class _GreetingWidgetState extends State<GreetingWidget> {
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});
 
-  // Helper methods moved inside the class so it's self-contained
   DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
     final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
     if (raw is Timestamp) return raw.toDate();
@@ -409,7 +433,6 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
     _index = _seedIndexForToday();
   }
 
-  /// Stable pick per calendar day so the “daily” message refreshes naturally each day.
   int _seedIndexForToday() {
     final n = DateTime.now();
     final dayKey = n.year * 10000 + n.month * 100 + n.day;
@@ -498,8 +521,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
                       bottom: -5,
                       child: Icon(Icons.psychology,
                           size: 40,
-                          color:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.3))),
+                          color: const Color(0xFF7C3AED).withValues(alpha: 0.3))),
                 ],
               ),
             ),
@@ -573,7 +595,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         const SizedBox(height: 20),
         _buildDaysBar(),
         const SizedBox(height: 12),
-        _buildOverdueInfoBar(dateKey), // ADDED FROM TEAMMATE
+        _buildOverdueInfoBar(dateKey),
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
@@ -590,8 +612,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox.shrink();
+        }
 
         int overdueOnSelectedDay = 0;
         int totalOverdue = 0;
@@ -657,16 +680,16 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return _buildNoTasksPlaceholder("No revision plans found.");
+        }
 
         List<Widget> dailyTaskWidgets = [];
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          // Extract the material title we saved in n8n
-          final String pdfName = data['materialTitle'] ?? 'Study Material';
 
           try {
             final List<dynamic> daysList =
@@ -684,7 +707,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
                   pdfName: task['fileName'] ?? 'General',
-                  pages: task['pages']?.toString() ?? '', // Passed Pages
+                  pages: task['pages']?.toString() ?? '',
                   isCompleted: task['completed'] ?? false,
                   isOverdue: _isDateBeforeToday(dateKey) &&
                       (task['completed'] != true),
@@ -698,8 +721,9 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty)
+        if (dailyTaskWidgets.isEmpty) {
           return _buildNoTasksPlaceholder("Relax! No tasks for today.");
+        }
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -744,16 +768,16 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         ),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start, // Align top for multi-line
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
             onTap: () async {
               for (var day in fullDailyTasks) {
                 if (day['date'] == dateKey) {
                   for (var t in day['tasks']) {
-                    if (t['taskId'] == taskId)
+                    if (t['taskId'] == taskId) {
                       t['completed'] = !(t['completed'] ?? false);
+                    }
                   }
                 }
               }
@@ -788,7 +812,6 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Displaying Folder and PDF Name
                 Text(
                   '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
                   style: TextStyle(
@@ -801,7 +824,6 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                // Displaying Page Numbers and Status
                 Row(
                   children: [
                     if (pages.isNotEmpty) ...[
@@ -922,6 +944,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     ));
   }
 }
+
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
 
@@ -952,12 +975,14 @@ class NotificationsPage extends StatelessWidget {
                   .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                // Loading state
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                // Empty state
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return Center(
                     child: Column(
@@ -984,9 +1009,8 @@ class NotificationsPage extends StatelessWidget {
                     final data = docs[index].data() as Map<String, dynamic>;
                     final bool isRead = data['isRead'] ?? false;
                     final Timestamp? ts = data['createdAt'] as Timestamp?;
-                    final String timeAgo = ts != null
-                        ? _formatTime(ts.toDate())
-                        : '';
+                    final String timeAgo =
+                        ts != null ? _formatTime(ts.toDate()) : '';
 
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
@@ -1002,18 +1026,15 @@ class NotificationsPage extends StatelessWidget {
                         ),
                         child: Icon(
                           Icons.school_outlined,
-                          color: isRead
-                              ? Colors.grey
-                              : const Color(0xFF7C3AED),
+                          color: isRead ? Colors.grey : const Color(0xFF7C3AED),
                           size: 22,
                         ),
                       ),
                       title: Text(
                         data['title'] ?? '',
                         style: TextStyle(
-                          fontWeight: isRead
-                              ? FontWeight.normal
-                              : FontWeight.bold,
+                          fontWeight:
+                              isRead ? FontWeight.normal : FontWeight.bold,
                           fontSize: 14,
                         ),
                       ),
@@ -1029,7 +1050,6 @@ class NotificationsPage extends StatelessWidget {
                                   fontSize: 11, color: Colors.grey[400])),
                         ],
                       ),
-                      // Mark as read when tapped
                       onTap: () {
                         if (!isRead) {
                           docs[index].reference.update({'isRead': true});
@@ -1043,7 +1063,6 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 
-  // Formats timestamp to human-readable string
   String _formatTime(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'Just now';

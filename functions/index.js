@@ -48,7 +48,10 @@ exports.sendExamReminderNotifications = onSchedule(
         if (plan.examDate) {
         // Handle Firestore Timestamp
           if (plan.examDate.toDate) {
-            examDateStr = plan.examDate.toDate().toISOString().split("T")[0];
+            // Apply Riyadh offset to Timestamp conversion to ensure date accuracy
+            const dateObj = plan.examDate.toDate();
+            const localDate = new Date(dateObj.getTime() + (3 * 60 * 60 * 1000));
+            examDateStr = localDate.toISOString().split("T")[0];
           } else if (typeof plan.examDate === "string") {
           // Handle ISO string
             examDateStr = plan.examDate.split("T")[0];

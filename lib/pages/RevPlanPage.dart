@@ -779,7 +779,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                     if (hasExam)
                       Positioned(
                         top: 4,
-                        right: 6,
+                        left: 6,
                         child: Text(
                           '*',
                           style: TextStyle(

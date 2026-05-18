@@ -1049,7 +1049,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                         if (hasExam)
                           const Positioned(
                             top: 4,
-                            right: 6,
+                            left: 6,
                             child: Text(
                               '*',
                               style: TextStyle(

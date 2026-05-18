@@ -91,7 +91,6 @@ _revisionPlanService.listenForPlan(
         setState(() => _generatingFolderName = null);
         _showToast(folderName);
       } else {
-        // Widget rebuilt but state still needs clearing
         _generatingFolderName = null;
       }
     } else {
@@ -250,6 +249,13 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           dailyTasks = rawTasks;
         }
 
+        // استخراج تاريخ الاختبار من البلان
+        final rawExamDate = planData['examDate'] ?? planData['exam_date'] ?? planData['examDateIso'];
+        DateTime? examDate;
+        if (rawExamDate is Timestamp) examDate = rawExamDate.toDate();
+        if (rawExamDate is String) examDate = DateTime.tryParse(rawExamDate);
+        final examDateKey = examDate != null ? _toDateKey(examDate) : null;
+
         final selectedDate = _weekDates[_selectedDayIndex];
         final dateKey = _toDateKey(selectedDate);
 
@@ -284,13 +290,13 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildDaysBar(dailyTasks),
+                        _buildDaysBar(dailyTasks, examDateKey),
                         const SizedBox(height: 16),
                         _buildOverdueInfoBar(dailyTasks, dateKey),
                       ],
                     ),
                   ),
-                  _buildTasksSliver(dailyTasks, dateKey, planData),
+                  _buildTasksSliver(dailyTasks, dateKey, planData, examDateKey, planData['folderName'] ?? 'Course'),
                 ],
               ),
               if (_regeneratingPlan) ...[
@@ -387,7 +393,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         children: [
           Row(
             children: [
-              // Exam date
               const Icon(Icons.event, size: 16, color: Colors.grey),
               const SizedBox(width: 6),
               Text(
@@ -447,7 +452,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
             ],
           ),
           const SizedBox(height: 12),
-          // Progress bar
           Row(
             children: [
               Expanded(
@@ -493,7 +497,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // Reschedule with AI
           Expanded(
             child: OutlinedButton.icon(
               onPressed: _regeneratingPlan
@@ -531,7 +534,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
   }
-// ── delete Plan ─────────────────────────────────────────────────────
+
+  // ── delete Plan ─────────────────────────────────────────────────────
   Future<void> _deletePlan(String folderName) async {
     final confirmDelete = await showDialog<bool>(
       context: context,
@@ -554,24 +558,18 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
     if (confirmDelete != true || !mounted) return;
 
-    // 1. Capture the immediate Overlay state before changing the screen view state
     final OverlayState overlayState = Overlay.of(context);
-
-    // 2. Pop back instantly to prevent the document stream deletion glitch
     widget.onBack();
 
     try {
-      // 3. Remove the plan from Firebase asynchronously
       await FirebaseFirestore.instance
           .collection('revisionPlans')
           .doc(widget.planId)
           .delete();
       
-      // 4. Trigger our responsive, custom-fading micro pill
       _showFadingPill(overlayState);
 
     } catch (e) {
-      // Fallback safe logger if background threads get interrupted
       debugPrint("Error deleting document: $e");
     }
   }
@@ -583,7 +581,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
     entry = OverlayEntry(
       builder: (BuildContext context) => Positioned(
-        bottom: MediaQuery.of(context).size.height * 0.12, // Perfectly responsive lower third
+        bottom: MediaQuery.of(context).size.height * 0.12,
         left: 0,
         right: 0,
         child: IgnorePointer(
@@ -594,7 +592,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               builder: (BuildContext context, double opacityValue, Widget? child) {
                 return AnimatedOpacity(
                   opacity: opacityValue,
-                  duration: const Duration(milliseconds: 300), // Clean fade transition
+                  duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
                   child: child,
                 );
@@ -602,11 +600,11 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), // Small compact size
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white, // Pure white base
-                    borderRadius: BorderRadius.circular(100), // Sleek pill styling
-                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5), // Soft lavender outline
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
                     boxShadow: [
                       BoxShadow(
                         color: _planPurple.withOpacity(0.08),
@@ -616,16 +614,16 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                     ],
                   ),
                   child: const Row(
-                    mainAxisSize: MainAxisSize.min, // Hugs the elements tightly
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.delete_outline, color: _planPurple, size: 15), // Smaller custom colored icon
+                      Icon(Icons.delete_outline, color: _planPurple, size: 15),
                       SizedBox(width: 6),
                       Text(
                         'Plan deleted',
                         style: TextStyle(
-                          color: _planPurple, // Pure purple typography text
+                          color: _planPurple,
                           fontWeight: FontWeight.w600,
-                          fontSize: 13, // Minimal text footprint
+                          fontSize: 13,
                         ),
                       ),
                     ],
@@ -638,17 +636,14 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
 
-    // Safely insert into the view hierarchy tree
     overlayState.insert(entry);
     
-    // Smoothly kick off the fade-in animation loop
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (opacityNotifier.hashCode != 0) {
         opacityNotifier.value = 1.0;
       }
     });
 
-    // Handle automated fade-out step and memory disposal window 
     Future.delayed(const Duration(milliseconds: 1800), () {
       opacityNotifier.value = 0.0;
       Future.delayed(const Duration(milliseconds: 300), () {
@@ -657,6 +652,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       });
     });
   }
+
   // ── Week nav buttons ─────────────────────────────────────────────────────
 
   Widget _buildWeekNavButtons() {
@@ -688,103 +684,122 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
-  // ── Days bar — matches DailyTasksSection style exactly ───────────────────
+  // ── Days bar ───────────────────────────────────────────────────────────
+  // تعديل: أضيف examDateKey لعرض النجمة * على يوم الاختبار
 
-  Widget _buildDaysBar(List<dynamic> dailyTasks) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    child: Row(
-      children: List.generate(_weekDates.length, (index) {
-        final date = _weekDates[index];
-        final isSelected = index == _selectedDayIndex;
-        final dateKey = _toDateKey(date);
+  Widget _buildDaysBar(List<dynamic> dailyTasks, String? examDateKey) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: List.generate(_weekDates.length, (index) {
+          final date = _weekDates[index];
+          final isSelected = index == _selectedDayIndex;
+          final dateKey = _toDateKey(date);
 
-        // Count tasks for dot indicator
-        dynamic dayData;
-        for (final day in dailyTasks) {
-          if (day['date']?.toString().startsWith(dateKey) == true) {
-            dayData = day;
-            break;
+          // Count tasks for dot indicator
+          dynamic dayData;
+          for (final day in dailyTasks) {
+            if (day['date']?.toString().startsWith(dateKey) == true) {
+              dayData = day;
+              break;
+            }
           }
-        }
-        final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
-        final hasOverdue = _isDateBeforeToday(date) &&
-            tasks.any((t) => t['completed'] != true);
-        final hasTasks = tasks.isNotEmpty;
+          final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
+          final hasOverdue = _isDateBeforeToday(date) &&
+              tasks.any((t) => t['completed'] != true);
+          final hasTasks = tasks.isNotEmpty;
 
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: InkWell(
-              onTap: () => setState(() => _selectedDayIndex = index),
-              child: Stack(
-                alignment: Alignment.topCenter, // Ensures dots stay at top
-                children: [
-                  Container(
-                    // width: double.infinity makes the pill take all space provided by Expanded
-                    width: double.infinity, 
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFFF3E8FF)
-                          : Colors.grey[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
+          // هل هذا اليوم فيه اختبار؟
+          final hasExam = examDateKey != null && examDateKey == dateKey;
+
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: InkWell(
+                onTap: () => setState(() => _selectedDayIndex = index),
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 80,
+                      decoration: BoxDecoration(
                         color: isSelected
-                            ? const Color(0xFF9333EA)
-                            : Colors.grey[300]!,
-                        width: isSelected ? 2 : 1,
+                            ? const Color(0xFFF3E8FF)
+                            : Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF9333EA)
+                              : Colors.grey[300]!,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            DateFormat('E').format(date),
+                            style: TextStyle(
+                              color: isSelected
+                                  ? const Color(0xFF7C3AED)
+                                  : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('d').format(date),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          DateFormat('E').format(date),
+                    // نقطة المهام (بنفشي أو برتقالي)
+                    if (hasTasks)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: hasOverdue
+                                ? Colors.deepOrange
+                                : const Color(0xFF9333EA),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    // نجمة * حمراء إذا فيه اختبار في هذا اليوم
+                    if (hasExam)
+                      Positioned(
+                        top: 4,
+                        left: 6,
+                        child: Text(
+                          '*',
                           style: TextStyle(
-                            color: isSelected
-                                ? const Color(0xFF7C3AED)
-                                : Colors.black87,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 4), // Added a tiny bit of breathing room
-                        Text(
-                          DateFormat('d').format(date),
-                          style: const TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red,
+                            height: 1,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Dot indicator positioned relative to the expanded container
-                  if (hasTasks)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: hasOverdue
-                              ? Colors.deepOrange
-                              : const Color(0xFF9333EA),
-                          shape: BoxShape.circle,
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      }),
-    ),
-  );
-}
+          );
+        }),
+      ),
+    );
+  }
+
   // ── Overdue info bar ─────────────────────────────────────────────────────
 
   Widget _buildOverdueInfoBar(List<dynamic> dailyTasks, String dateKey) {
@@ -842,11 +857,14 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
   }
 
   // ── Tasks sliver ─────────────────────────────────────────────────────────
+  // تعديل: أضيف examDateKey و folderName لعرض كارد الاختبار
 
   Widget _buildTasksSliver(
     List<dynamic> dailyTasks,
     String dateKey,
     Map<String, dynamic> planData,
+    String? examDateKey,
+    String folderName,
   ) {
     // Find day data
     dynamic dayData;
@@ -859,7 +877,10 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
     final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
 
-    if (tasks.isEmpty) {
+    // هل اليوم المحدد فيه اختبار؟
+    final isExamDay = examDateKey != null && examDateKey == dateKey;
+
+    if (tasks.isEmpty && !isExamDay) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
@@ -888,17 +909,25 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            final task = tasks[index] as Map<dynamic, dynamic>;
+            // الكارد الأول هو كارد الاختبار إذا اليوم فيه اختبار
+            if (isExamDay && index == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildExamCard(folderName.toUpperCase()),
+              );
+            }
+
+            final taskIndex = isExamDay ? index - 1 : index;
+            final task = tasks[taskIndex] as Map<dynamic, dynamic>;
             final isCompleted = task['completed'] == true;
-            final isOverdue = _isDateBeforeToday(selectedDate) &&
-                !isCompleted;
+            final isOverdue = _isDateBeforeToday(selectedDate) && !isCompleted;
             final isRescheduled = task['rescheduled'] == true;
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _TaskCard(
                 task: task,
-                taskIndex: index,
+                taskIndex: taskIndex,
                 isCompleted: isCompleted,
                 isOverdue: isOverdue,
                 isRescheduled: isRescheduled,
@@ -907,7 +936,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                 dailyTasks: dailyTasks,
                 planData: planData,
                 onMoved: (toDate) {
-                  // Jump calendar to target date if in same week
                   final newKey = _toDateKey(toDate);
                   for (var i = 0; i < _weekDates.length; i++) {
                     if (_toDateKey(_weekDates[i]) == newKey) {
@@ -919,8 +947,46 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               ),
             );
           },
-          childCount: tasks.length,
+          childCount: tasks.length + (isExamDay ? 1 : 0),
         ),
+      ),
+    );
+  }
+
+  // ── Exam Card ────────────────────────────────────────────────────────────
+
+  Widget _buildExamCard(String folderName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDFA4C0), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Text('🍀', style: TextStyle(fontSize: 28)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$folderName EXAM',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Good luck!',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1171,7 +1237,6 @@ class _TaskCard extends StatelessWidget {
     List<dynamic> allDays =
         wasString ? jsonDecode(raw) : List<dynamic>.from(raw ?? []);
  
-    // Remove from source day
     int srcIdx = -1;
     for (var i = 0; i < allDays.length; i++) {
       final d = DateTime.tryParse(allDays[i]['date']?.toString() ?? '');
@@ -1189,7 +1254,6 @@ class _TaskCard extends StatelessWidget {
     srcDay['tasks'] = srcTasks;
     allDays[srcIdx] = srcDay;
  
-    // Add to target day
     int tgtIdx = -1;
     for (var i = 0; i < allDays.length; i++) {
       final d = DateTime.tryParse(allDays[i]['date']?.toString() ?? '');
@@ -1270,7 +1334,6 @@ class _TaskCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Checkbox
           GestureDetector(
             onTap: () => _toggleCompletion(context),
             child: Padding(
@@ -1299,12 +1362,10 @@ class _TaskCard extends StatelessWidget {
  
           const SizedBox(width: 14),
  
-          // Content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title row
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1327,7 +1388,6 @@ class _TaskCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Status badges
                     if (isOverdue && !isCompleted) ...[
                       const SizedBox(width: 6),
                       Container(
@@ -1365,7 +1425,6 @@ class _TaskCard extends StatelessWidget {
  
                 const SizedBox(height: 4),
  
-                // Course / file name
                 Text(
                   [course, if (fileName.isNotEmpty) fileName]
                       .where((s) => s.isNotEmpty)
@@ -1378,7 +1437,6 @@ class _TaskCard extends StatelessWidget {
  
                 const SizedBox(height: 6),
  
-                // Pages + Move button row
                 Row(
                   children: [
                     if (pages.isNotEmpty) ...[
@@ -1400,7 +1458,6 @@ class _TaskCard extends StatelessWidget {
                       const SizedBox(width: 8),
                     ],
                     const Spacer(),
-                    // Move task button
                     InkWell(
                       onTap: () => _pickAndMove(context),
                       borderRadius: BorderRadius.circular(6),
@@ -1426,7 +1483,6 @@ class _TaskCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    // Take Quiz button
                     Material(
                       color: isCompleted
                           ? const Color(0xFF52C41A)
@@ -1650,7 +1706,7 @@ class _PlansListContainerState extends State<_PlansListContainer> {
 }
 
 // ─────────────────────────────────────────
-// Revision plan card  (now calls onTap instead of Navigator.push)
+// Revision plan card
 // ─────────────────────────────────────────
 
 class RevisionPlanCard extends StatelessWidget {

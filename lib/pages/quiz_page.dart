@@ -1,12 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class QuizPage extends StatefulWidget {
   final List quiz;
   final VoidCallback onExit; // لاستدعاء الخروج من صفحة الهبوط
+  
+  // Optional: Task auto-completion parameters
+  final String? taskDocId;
+  final String? taskId;
+  final String? dateKey;
+  final List? fullDailyTasks;
 
-  const QuizPage({super.key, required this.quiz, required this.onExit});
+  const QuizPage({
+    super.key,
+    required this.quiz,
+    required this.onExit,
+    this.taskDocId,
+    this.taskId,
+    this.dateKey,
+    this.fullDailyTasks,
+  });
 
   @override
   State<QuizPage> createState() => _QuizPageState();
@@ -132,6 +147,14 @@ class _QuizPageState extends State<QuizPage> {
       emoji = "📚";
     }
 
+    // Auto-mark task as done if score >= 80%
+    if (percentage >= 0.8 && widget.taskDocId != null && widget.taskId != null && 
+        widget.dateKey != null && widget.fullDailyTasks != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _autoMarkTaskAsDone();
+      });
+    }
+
     return SafeArea(
       child: Center(
         child: Padding(
@@ -148,11 +171,36 @@ class _QuizPageState extends State<QuizPage> {
               Text("$message $emoji", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
               const SizedBox(height: 12),
               Text("You got $score/$total", style: const TextStyle(fontSize: 22, color: Color(0xFF444466), fontWeight: FontWeight.w600)),
+              
+              // Show auto-mark notification if applicable
+              if (percentage >= 0.8) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4EDDA),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF28A745), width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle, color: Color(0xFF28A745), size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Task marked as completed!',
+                        style: TextStyle(color: Color(0xFF155724), fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: widget.onExit, // يعود لصفحة الهبوط
+                  onPressed: widget.onExit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF5C3D9E),
                     foregroundColor: Colors.white,
@@ -167,6 +215,38 @@ class _QuizPageState extends State<QuizPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _autoMarkTaskAsDone() async {
+    try {
+      final docId = widget.taskDocId;
+      final taskId = widget.taskId;
+      final dateKey = widget.dateKey;
+      final fullDailyTasks = widget.fullDailyTasks;
+
+      if (docId == null || taskId == null || dateKey == null || fullDailyTasks == null) {
+        return;
+      }
+
+      // Update the task's completed status
+      for (var day in fullDailyTasks) {
+        if (day['date'] == dateKey) {
+          for (var t in day['tasks']) {
+            if (t['taskId'] == taskId) {
+              t['completed'] = true;
+            }
+          }
+        }
+      }
+
+      // Write back to Firestore
+      await FirebaseFirestore.instance
+          .collection('revisionPlans')
+          .doc(docId)
+          .update({'dailyTasks': jsonEncode(fullDailyTasks)});
+    } catch (e) {
+      debugPrint('Error auto-marking task as done: $e');
+    }
   }
 
   @override

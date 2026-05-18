@@ -109,74 +109,74 @@ class _DashBoardState extends State<DashBoard> {
       ),
     );
   }
-Widget _buildTopBar() {
-  final user = FirebaseAuth.instance.currentUser;
 
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 8),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          _pageTitles[_selectedIndex],
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF2D1F3D),
-            letterSpacing: -0.3,
+  Widget _buildTopBar() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            _pageTitles[_selectedIndex],
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF2D1F3D),
+              letterSpacing: -0.3,
+            ),
           ),
-        ),
-        if (user != null)
-          StreamBuilder<QuerySnapshot>(
-            // الاستماع فقط للإشعارات غير المقروءة الخاصة بهذا المستخدم
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .where('userId', isEqualTo: user.uid)
-                .where('isRead', isEqualTo: false)
-                .snapshots(),
-            builder: (context, snapshot) {
-              // التحقق مما إذا كان هناك أي إشعار غير مقروء
-              final hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+          if (user != null)
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: user.uid)
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final hasUnread =
+                    snapshot.hasData && snapshot.data!.docs.isNotEmpty;
 
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_outlined),
-                    color: const Color(0xFF553C76),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationsPage()),
-                    ),
-                  ),
-                  // إذا وجد إشعار غير مقروء، نظهر النقطة الحمراء الصغيرة في الزاوية
-                  if (hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_outlined),
+                      color: const Color(0xFF553C76),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const NotificationsPage()),
                       ),
                     ),
-                ],
-              );
-            },
-          )
-        else
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            color: const Color(0xFF553C76),
-            onPressed: () {},
-          ),
-      ],
-    ),
-  );
-}
+                    if (hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              color: const Color(0xFF553C76),
+              onPressed: () {},
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class DashboardHomeContent extends StatelessWidget {
@@ -338,15 +338,16 @@ class UpcomingExamsSection extends StatelessWidget {
                       return Column(
                         children: List.generate(upcoming.length, (index) {
                           final plan = upcoming[index];
-                          final examDate = _examDateFromPlan(plan)!;
                           return Padding(
                             padding: EdgeInsets.only(
                                 bottom: index == upcoming.length - 1 ? 0 : 12),
                             child: _ExamCardWidget(
                               title:
                                   '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                              date:
-                                  '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
+                              date: () {
+                                final examDate = _examDateFromPlan(plan)!;
+                               return '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}';
+                              }(),
                               color: index.isEven
                                   ? const Color(0xFFFFF3CD)
                                   : const Color(0xFFFFE4CC),
@@ -378,6 +379,7 @@ class _ExamCardWidget extends StatelessWidget {
   final String title;
   final String date;
   final Color color;
+
   const _ExamCardWidget(
       {required this.title, required this.date, required this.color});
 
@@ -521,7 +523,8 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
                       bottom: -5,
                       child: Icon(Icons.psychology,
                           size: 40,
-                          color: const Color(0xFF7C3AED).withValues(alpha: 0.3))),
+                          color:
+                              const Color(0xFF7C3AED).withValues(alpha: 0.3))),
                 ],
               ),
             ),
@@ -571,6 +574,31 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     final today = DateTime(n.year, n.month, n.day);
     final day = DateTime(d.year, d.month, d.day);
     return day.isBefore(today);
+  }
+
+  // Stream يجيب كل تواريخ الاختبارات للطالب
+  Stream<Set<String>> _examDatesStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Stream.value({});
+    return FirebaseFirestore.instance
+        .collection('revisionPlans')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map((snapshot) {
+      final Set<String> examDates = {};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final raw =
+            data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
+        DateTime? date;
+        if (raw is Timestamp) date = raw.toDate();
+        if (raw is String) date = DateTime.tryParse(raw);
+        if (date != null) {
+          examDates.add(DateFormat('yyyy-MM-dd').format(date));
+        }
+      }
+      return examDates;
+    });
   }
 
   @override
@@ -688,8 +716,25 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         }
 
         List<Widget> dailyTaskWidgets = [];
+        List<Widget> examCardWidgets = [];
+
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
+
+          // تحقق إذا اليوم المحدد فيه اختبار لهذا الكورس
+          try {
+            final raw = data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
+            DateTime? examDate;
+            if (raw is Timestamp) examDate = raw.toDate();
+            if (raw is String) examDate = DateTime.tryParse(raw);
+            if (examDate != null) {
+              final examDateKey = DateFormat('yyyy-MM-dd').format(examDate);
+              if (examDateKey == dateKey) {
+                final folderName = (data['folderName'] as String? ?? 'Course').toUpperCase();
+                examCardWidgets.add(_buildExamCard(folderName));
+              }
+            }
+          } catch (_) {}
 
           try {
             final List<dynamic> daysList =
@@ -721,19 +766,31 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty) {
+        if (dailyTaskWidgets.isEmpty && examCardWidgets.isEmpty) {
           return _buildNoTasksPlaceholder("Relax! No tasks for today.");
         }
 
         return LayoutBuilder(
           builder: (context, constraints) {
             final double itemWidth = (constraints.maxWidth - 16) / 2;
-            return Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: dailyTaskWidgets
-                  .map((widget) => SizedBox(width: itemWidth, child: widget))
-                  .toList(),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // بطاقات الاختبار تظهر فوق كاملة العرض
+                ...examCardWidgets.map((w) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: w,
+                )),
+                // باقي المهام في شبكة
+                if (dailyTaskWidgets.isNotEmpty)
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: dailyTaskWidgets
+                        .map((widget) => SizedBox(width: itemWidth, child: widget))
+                        .toList(),
+                  ),
+              ],
             );
           },
         );
@@ -860,6 +917,42 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     );
   }
 
+  Widget _buildExamCard(String folderName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDFA4C0), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Text('🍀', style: TextStyle(fontSize: 28)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$folderName EXAM',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Good luck!',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNoTasksPlaceholder(String message) {
     return Container(
       width: double.infinity,
@@ -899,49 +992,84 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   }
 
   Widget _buildDaysBar() {
-    return Row(
-        children: List.generate(
-      _weekDates.length,
-      (index) {
-        final date = _weekDates[index];
-        final isSelected = index == _selectedDayIndex;
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: InkWell(
-              onTap: () => setState(() => _selectedDayIndex = index),
-              child: Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF9333EA)
-                        : Colors.grey[300]!,
-                    width: isSelected ? 2 : 1,
+    return StreamBuilder<Set<String>>(
+      stream: _examDatesStream(),
+      builder: (context, snapshot) {
+        final examDates = snapshot.data ?? {};
+        return Row(
+          children: List.generate(_weekDates.length, (index) {
+            final date = _weekDates[index];
+            final isSelected = index == _selectedDayIndex;
+            final dateKey = DateFormat('yyyy-MM-dd').format(date);
+            final hasExam = examDates.contains(dateKey);
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: InkWell(
+                  onTap: () => setState(() => _selectedDayIndex = index),
+                  child: Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFF3E8FF)
+                          : Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF9333EA)
+                            : Colors.grey[300]!,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                DateFormat('E').format(date),
+                                style: TextStyle(
+                                    color: isSelected
+                                        ? const Color(0xFF7C3AED)
+                                        : Colors.black87,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                DateFormat('d').format(date),
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // النجمة الحمراء إذا فيه اختبار في هذا اليوم
+                        if (hasExam)
+                          const Positioned(
+                            top: 4,
+                            right: 6,
+                            child: Text(
+                              '*',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(DateFormat('E').format(date),
-                        style: TextStyle(
-                            color: isSelected
-                                ? const Color(0xFF7C3AED)
-                                : Colors.black87,
-                            fontWeight: FontWeight.bold)),
-                    Text(DateFormat('d').format(date),
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
               ),
-            ),
-          ),
+            );
+          }),
         );
       },
-    ));
+    );
   }
 }
 

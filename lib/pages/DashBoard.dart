@@ -29,8 +29,6 @@ class _DashBoardState extends State<DashBoard> {
   @override
   void initState() {
     super.initState();
-    ExamNotificationScheduler.scheduleAll();
-
     // ── شغلِك: تهيئة الإشعارات السحابية بعد بناء الإطار ──
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 1));

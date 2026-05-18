@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:gp2_watad/services/notification_service.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../widgets/custom_sidebar.dart';
@@ -11,6 +10,9 @@ import 'snaps_board_page.dart';
 import 'brain_games_page.dart';
 import 'profile_page.dart';
 import 'quiz_landing_page.dart';
+import 'quiz_page.dart';
+import '../services/exam_notification_scheduler.dart';
+import '../services/task_quiz_service.dart';
 
 class DashBoard extends StatefulWidget {
   const DashBoard({super.key});
@@ -25,17 +27,10 @@ class _DashBoardState extends State<DashBoard> {
   @override
   void initState() {
     super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(seconds: 1));
-      try {
-        await NotificationService().initialize(context);
-      } catch (e) {
-        debugPrint('❌ [DashBoard] Error during notification initialization: $e');
-      }
-    });
+    ExamNotificationScheduler.scheduleAll();
   }
 
+  // Same order as IndexedStack children
   static const _pageTitles = [
     'Dashboard',
     'Course Folder',
@@ -49,7 +44,7 @@ class _DashBoardState extends State<DashBoard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F2F8),
+      backgroundColor: const Color(0xFFF4F2F8), // off-white lavender base
       body: Row(
         children: [
           CustomSidebar(
@@ -62,8 +57,10 @@ class _DashBoardState extends State<DashBoard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Transparent topbar — part of the frame layer
                   _buildTopBar(),
                   const SizedBox(height: 16),
+                  // The floating white island
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -111,15 +108,13 @@ class _DashBoardState extends State<DashBoard> {
   }
 
   Widget _buildTopBar() {
-    final user = FirebaseAuth.instance.currentUser;
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            _pageTitles[_selectedIndex],
+            _pageTitles[_selectedIndex], // ← dynamic title
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -127,52 +122,14 @@ class _DashBoardState extends State<DashBoard> {
               letterSpacing: -0.3,
             ),
           ),
-          if (user != null)
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('notifications')
-                  .where('userId', isEqualTo: user.uid)
-                  .where('isRead', isEqualTo: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final hasUnread =
-                    snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.notifications_outlined),
-                      color: const Color(0xFF553C76),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const NotificationsPage()),
-                      ),
-                    ),
-                    if (hasUnread)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              color: const Color(0xFF553C76),
-              onPressed: () {},
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            color: const Color(0xFF553C76),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationsPage()),
             ),
+          ),
         ],
       ),
     );
@@ -246,6 +203,7 @@ class _GreetingWidgetState extends State<GreetingWidget> {
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});
 
+  // Helper methods moved inside the class so it's self-contained
   DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
     final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
     if (raw is Timestamp) return raw.toDate();
@@ -338,16 +296,15 @@ class UpcomingExamsSection extends StatelessWidget {
                       return Column(
                         children: List.generate(upcoming.length, (index) {
                           final plan = upcoming[index];
+                          final examDate = _examDateFromPlan(plan)!;
                           return Padding(
                             padding: EdgeInsets.only(
                                 bottom: index == upcoming.length - 1 ? 0 : 12),
                             child: _ExamCardWidget(
                               title:
                                   '${_folderNameFromPlan(plan).toUpperCase()} EXAM',
-                              date: () {
-                                final examDate = _examDateFromPlan(plan)!;
-                               return '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}';
-                              }(),
+                              date:
+                                  '${examDate.day.toString().padLeft(2, '0')}/${examDate.month.toString().padLeft(2, '0')}/${examDate.year}',
                               color: index.isEven
                                   ? const Color(0xFFFFF3CD)
                                   : const Color(0xFFFFE4CC),
@@ -379,7 +336,6 @@ class _ExamCardWidget extends StatelessWidget {
   final String title;
   final String date;
   final Color color;
-
   const _ExamCardWidget(
       {required this.title, required this.date, required this.color});
 
@@ -435,6 +391,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
     _index = _seedIndexForToday();
   }
 
+  /// Stable pick per calendar day so the “daily” message refreshes naturally each day.
   int _seedIndexForToday() {
     final n = DateTime.now();
     final dayKey = n.year * 10000 + n.month * 100 + n.day;
@@ -465,7 +422,8 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -523,8 +481,8 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
                       bottom: -5,
                       child: Icon(Icons.psychology,
                           size: 40,
-                          color:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.3))),
+                          color: const Color(0xFF7C3AED)
+                              .withValues(alpha: 0.3))),
                 ],
               ),
             ),
@@ -576,31 +534,6 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     return day.isBefore(today);
   }
 
-  // Stream يجيب كل تواريخ الاختبارات للطالب
-  Stream<Set<String>> _examDatesStream() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return Stream.value({});
-    return FirebaseFirestore.instance
-        .collection('revisionPlans')
-        .where('userId', isEqualTo: user.uid)
-        .snapshots()
-        .map((snapshot) {
-      final Set<String> examDates = {};
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final raw =
-            data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
-        DateTime? date;
-        if (raw is Timestamp) date = raw.toDate();
-        if (raw is String) date = DateTime.tryParse(raw);
-        if (date != null) {
-          examDates.add(DateFormat('yyyy-MM-dd').format(date));
-        }
-      }
-      return examDates;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final selectedDate = _weekDates[_selectedDayIndex];
@@ -623,7 +556,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         const SizedBox(height: 20),
         _buildDaysBar(),
         const SizedBox(height: 12),
-        _buildOverdueInfoBar(dateKey),
+        _buildOverdueInfoBar(dateKey), // ADDED FROM TEAMMATE
         const SizedBox(height: 24),
         _buildFirestoreTasksList(dateKey),
       ],
@@ -640,9 +573,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
           return const SizedBox.shrink();
-        }
 
         int overdueOnSelectedDay = 0;
         int totalOverdue = 0;
@@ -708,34 +640,17 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
           return _buildNoTasksPlaceholder("No revision plans found.");
-        }
 
         List<Widget> dailyTaskWidgets = [];
-        List<Widget> examCardWidgets = [];
-
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-
-          // تحقق إذا اليوم المحدد فيه اختبار لهذا الكورس
-          try {
-            final raw = data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
-            DateTime? examDate;
-            if (raw is Timestamp) examDate = raw.toDate();
-            if (raw is String) examDate = DateTime.tryParse(raw);
-            if (examDate != null) {
-              final examDateKey = DateFormat('yyyy-MM-dd').format(examDate);
-              if (examDateKey == dateKey) {
-                final folderName = (data['folderName'] as String? ?? 'Course').toUpperCase();
-                examCardWidgets.add(_buildExamCard(folderName));
-              }
-            }
-          } catch (_) {}
-
+          // Extract the material title we saved in n8n
+          final String pdfName = data['materialTitle'] ?? 'Study Material'; 
+          
           try {
             final List<dynamic> daysList =
                 jsonDecode(data['dailyTasks'] as String? ?? '[]');
@@ -752,7 +667,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                   title: task['title'],
                   folder: data['folderName'] ?? 'Course',
                   pdfName: task['fileName'] ?? 'General',
-                  pages: task['pages']?.toString() ?? '',
+                  pages: task['pages']?.toString() ?? '', // Passed Pages
                   isCompleted: task['completed'] ?? false,
                   isOverdue: _isDateBeforeToday(dateKey) &&
                       (task['completed'] != true),
@@ -766,31 +681,18 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           } catch (_) {}
         }
 
-        if (dailyTaskWidgets.isEmpty && examCardWidgets.isEmpty) {
+        if (dailyTaskWidgets.isEmpty)
           return _buildNoTasksPlaceholder("Relax! No tasks for today.");
-        }
 
         return LayoutBuilder(
           builder: (context, constraints) {
             final double itemWidth = (constraints.maxWidth - 16) / 2;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // بطاقات الاختبار تظهر فوق كاملة العرض
-                ...examCardWidgets.map((w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: w,
-                )),
-                // باقي المهام في شبكة
-                if (dailyTaskWidgets.isNotEmpty)
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: dailyTaskWidgets
-                        .map((widget) => SizedBox(width: itemWidth, child: widget))
-                        .toList(),
-                  ),
-              ],
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: dailyTaskWidgets
+                  .map((widget) => SizedBox(width: itemWidth, child: widget))
+                  .toList(),
             );
           },
         );
@@ -801,10 +703,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   Widget _buildTaskCard({
     required String title,
     required String folder,
-    required String pdfName,
-    required String pages,
+    required String pdfName, 
+    required String pages, 
     required bool isCompleted,
-    required bool isOverdue,
+    required bool isOverdue, 
     required String taskId,
     required String docId,
     required List fullDailyTasks,
@@ -824,133 +726,209 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           width: isOverdue && !isCompleted ? 1.5 : 1,
         ),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () async {
-              for (var day in fullDailyTasks) {
-                if (day['date'] == dateKey) {
-                  for (var t in day['tasks']) {
-                    if (t['taskId'] == taskId) {
-                      t['completed'] = !(t['completed'] ?? false);
-                    }
-                  }
-                }
-              }
-              await FirebaseFirestore.instance
-                  .collection('revisionPlans')
-                  .doc(docId)
-                  .update({'dailyTasks': jsonEncode(fullDailyTasks)});
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(
-                isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isCompleted ? Colors.green : Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                    color: isCompleted
-                        ? Colors.green.shade700
-                        : (isOverdue
-                            ? Colors.deepOrange.shade900
-                            : Colors.black87),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isCompleted
-                        ? Colors.green.shade400
-                        : Colors.grey.shade600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    if (pages.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'pp. $pages',
-                          style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueGrey),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (isOverdue && !isCompleted)
-                      Text('Overdue',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.deepOrange.shade800)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExamCard(String folderName) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFDFA4C0), width: 1.5),
-      ),
-      child: Row(
-        children: [
-          const Text('🍀', style: TextStyle(fontSize: 28)),
-          const SizedBox(width: 16),
-          Column(
+          // Top row: Checkbox on left
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '$folderName EXAM',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
+              InkWell(
+                onTap: () async {
+                  for (var day in fullDailyTasks) {
+                    if (day['date'] == dateKey) {
+                      for (var t in day['tasks']) {
+                        if (t['taskId'] == taskId)
+                          t['completed'] = !(t['completed'] ?? false);
+                      }
+                    }
+                  }
+                  await FirebaseFirestore.instance
+                      .collection('revisionPlans')
+                      .doc(docId)
+                      .update({'dailyTasks': jsonEncode(fullDailyTasks)});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: isCompleted ? Colors.green : Colors.grey,
+                    size: 20,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Good luck!',
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        decoration: isCompleted ? TextDecoration.lineThrough : null,
+                        color: isCompleted
+                            ? Colors.green.shade700
+                            : (isOverdue ? Colors.deepOrange.shade900 : Colors.black87),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Folder and PDF name
+                    Text(
+                      '$folder • ${pdfName.isNotEmpty ? pdfName : "Multiple Sources"}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isCompleted ? Colors.green.shade400 : Colors.grey.shade600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          // Pages and status row
+          Row(
+            children: [
+              if (pages.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'pp. $pages',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (isOverdue && !isCompleted)
+                Text(
+                  'Overdue',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepOrange.shade800,
+                  ),
+                ),
+            ],
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // Bottom row: Take Quiz button on right
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SizedBox(
+                height: 28,
+                child: ElevatedButton(
+                  onPressed: isCompleted ? null : () => _takeQuizForTask(
+                    title: title,
+                    folder: folder,
+                    pdfName: pdfName,
+                    pages: pages,
+                    taskDocId: docId,
+                    taskId: taskId,
+                    dateKey: dateKey,
+                    fullDailyTasks: fullDailyTasks,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: Text(
+                    'Quiz',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isCompleted ? Colors.grey : Colors.white,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _takeQuizForTask({
+    required String title,
+    required String folder,
+    required String pdfName,
+    required String pages,
+    required String taskDocId,
+    required String taskId,
+    required String dateKey,
+    required List fullDailyTasks,
+  }) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Generating quiz for "$title"...',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final quiz = await TaskQuizService.generateTaskQuiz(
+        taskTitle: title,
+        subject: folder,
+        topic: pages.isNotEmpty ? 'Pages: $pages' : null,
+        materialTitle: pdfName.isNotEmpty ? pdfName : null,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      // Navigate to QuizPage with generated quiz and task info for auto-completion
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuizPage(
+            quiz: quiz,
+            onExit: () => Navigator.pop(context),
+            taskDocId: taskDocId,
+            taskId: taskId,
+            dateKey: dateKey,
+            fullDailyTasks: fullDailyTasks,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      // Show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating quiz: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
   }
 
   Widget _buildNoTasksPlaceholder(String message) {
@@ -992,84 +970,49 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   }
 
   Widget _buildDaysBar() {
-    return StreamBuilder<Set<String>>(
-      stream: _examDatesStream(),
-      builder: (context, snapshot) {
-        final examDates = snapshot.data ?? {};
-        return Row(
-          children: List.generate(_weekDates.length, (index) {
-            final date = _weekDates[index];
-            final isSelected = index == _selectedDayIndex;
-            final dateKey = DateFormat('yyyy-MM-dd').format(date);
-            final hasExam = examDates.contains(dateKey);
-
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: InkWell(
-                  onTap: () => setState(() => _selectedDayIndex = index),
-                  child: Container(
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFFF3E8FF)
-                          : Colors.grey[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF9333EA)
-                            : Colors.grey[300]!,
-                        width: isSelected ? 2 : 1,
-                      ),
-                    ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                DateFormat('E').format(date),
-                                style: TextStyle(
-                                    color: isSelected
-                                        ? const Color(0xFF7C3AED)
-                                        : Colors.black87,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                DateFormat('d').format(date),
-                                style: const TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // النجمة الحمراء إذا فيه اختبار في هذا اليوم
-                        if (hasExam)
-                          const Positioned(
-                            top: 4,
-                            left: 6,
-                            child: Text(
-                              '*',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.red,
-                                height: 1,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+    return Row(
+        children: List.generate(
+      _weekDates.length,
+      (index) {
+        final date = _weekDates[index];
+        final isSelected = index == _selectedDayIndex;
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              onTap: () => setState(() => _selectedDayIndex = index),
+              child: Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFF3E8FF) : Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF9333EA)
+                        : Colors.grey[300]!,
+                    width: isSelected ? 2 : 1,
                   ),
                 ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(DateFormat('E').format(date),
+                        style: TextStyle(
+                            color: isSelected
+                                ? const Color(0xFF7C3AED)
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold)),
+                    Text(DateFormat('d').format(date),
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
-            );
-          }),
+            ),
+          ),
         );
       },
-    );
+    ));
   }
 }
 
@@ -1078,8 +1021,6 @@ class NotificationsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1094,108 +1035,18 @@ class NotificationsPage extends StatelessWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: user == null
-          ? const Center(child: Text('Please sign in.'))
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('notifications')
-                  .where('userId', isEqualTo: user.uid)
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.notifications_none_outlined,
-                            size: 64, color: Colors.grey[300]),
-                        const SizedBox(height: 16),
-                        Text('No notifications yet',
-                            style: TextStyle(
-                                fontSize: 18, color: Colors.grey[500])),
-                      ],
-                    ),
-                  );
-                }
-
-                final docs = snapshot.data!.docs;
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: docs.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final bool isRead = data['isRead'] ?? false;
-                    final Timestamp? ts = data['createdAt'] as Timestamp?;
-                    final String timeAgo =
-                        ts != null ? _formatTime(ts.toDate()) : '';
-
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 8),
-                      leading: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: isRead
-                              ? Colors.grey[100]
-                              : const Color(0xFFF3E8FF),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.school_outlined,
-                          color: isRead ? Colors.grey : const Color(0xFF7C3AED),
-                          size: 22,
-                        ),
-                      ),
-                      title: Text(
-                        data['title'] ?? '',
-                        style: TextStyle(
-                          fontWeight:
-                              isRead ? FontWeight.normal : FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(data['body'] ?? '',
-                              style: const TextStyle(fontSize: 13)),
-                          const SizedBox(height: 4),
-                          Text(timeAgo,
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.grey[400])),
-                        ],
-                      ),
-                      onTap: () {
-                        if (!isRead) {
-                          docs[index].reference.update({'isRead': true});
-                        }
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_none_outlined,
+                size: 64, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('No notifications yet',
+                style: TextStyle(fontSize: 18, color: Colors.grey[500])),
+          ],
+        ),
+      ),
     );
-  }
-
-  String _formatTime(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
   }
 }

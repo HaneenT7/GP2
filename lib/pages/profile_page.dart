@@ -1096,11 +1096,11 @@ class _ProfilePageState extends State<ProfilePage> {
         icon: const Icon(Icons.logout, size: 20),
         label: const Text('Log out'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF7C4DFF),
-          side: const BorderSide(color: Color(0xFF7C4DFF)),
+          foregroundColor: const Color(0xFFFF4D4D),
+          side: const BorderSide(color: Color.fromARGB(255, 222, 67, 67)),
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(13),
           ),
         ),
       ),

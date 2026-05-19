@@ -572,7 +572,7 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
       ),
     );
   }
-
+  
   Widget _buildCorkboard(Color corkColor, Color frameColor, BuildContext ctx) {
     return Container(
       margin: const EdgeInsets.all(24),
@@ -633,31 +633,48 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
                             ),
                           ),
                         )
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final boardWidth = constraints.maxWidth > 0
-                                  ? constraints.maxWidth
-                                  : MediaQuery.of(context).size.width - 48;
-                              final boardHeight =
-                                  MediaQuery.of(context).size.height * 0.7;
+                      : Stack(
+                          children: [
+                            Positioned.fill(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(24),
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final boardWidth = constraints.maxWidth > 0
+                                        ? constraints.maxWidth
+                                        : MediaQuery.of(context).size.width - 48;
+                                    final boardHeight =
+                                        MediaQuery.of(context).size.height * 0.7;
 
-                              return SizedBox(
-                                width: boardWidth,
-                                height: boardHeight,
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    ..._snaps.asMap().entries.map((e) {
-                                      return _buildPositionedSnapCard(
-                                          e.key, e.value, boardWidth, boardHeight);
-                                    }),
-                                  ],
+                                    return SizedBox(
+                                      width: boardWidth,
+                                      height: boardHeight,
+                                      child: Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          ..._snaps.asMap().entries.map((e) {
+                                            return _buildPositionedSnapCard(
+                                                e.key, e.value, boardWidth, boardHeight);
+                                          }),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            ),
+                            // ── CHANGED: Positioned moved from left to right corner ──
+                            Positioned(
+                              bottom: 20,
+                              right: 20,
+                              child: FloatingActionButton(
+                                onPressed: _showUploadModal,
+                                backgroundColor: const Color(0xFF4C1D95),
+                                foregroundColor: Colors.white,
+                                child: const Icon(Icons.add),
+                              ),
+                            ),
+                          ],
                         ),
             ),
           ],

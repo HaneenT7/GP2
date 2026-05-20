@@ -43,14 +43,12 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
       _isFinished = false;
     });
     try {
-      // width=4, height=4 = 16 cells, pair-size=2 = 8 pairs
       final response = await http.get(
         Uri.parse(
             'https://shadify.yurace.pro/api/memory/generator?width=4&height=4&pair-size=2'),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // API returns: "grid" with letters (a,b,c...), "totalPairs"
         final gridRaw = data['grid'] as List;
         final totalPairs = data['totalPairs'] as int;
 
@@ -58,10 +56,9 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
         for (int r = 0; r < gridRaw.length; r++) {
           for (int c = 0; c < (gridRaw[r] as List).length; c++) {
             final letter = gridRaw[r][c] as String;
-            // Convert letter to number: a=1, b=2, ...z=26, A=27...
             final value = letter.codeUnitAt(0) < 97
-                ? letter.codeUnitAt(0) - 65 + 27 // uppercase A=27
-                : letter.codeUnitAt(0) - 96; // lowercase a=1
+                ? letter.codeUnitAt(0) - 65 + 27
+                : letter.codeUnitAt(0) - 96;
             cards.add(_MemoryCard(value: value, letter: letter));
           }
         }
@@ -174,8 +171,8 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.close, size: 24), // تغيير السهم إلى إكس
-              onPressed: widget.onExit, // استدعاء دالة الخروج التي مررناها
+              icon: const Icon(Icons.close, size: 24),
+              onPressed: widget.onExit,
             ),
             Text('Memory',
                 style: GoogleFonts.iceland(
@@ -215,8 +212,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
       ]),
     );
   }
-
-  Widget _buildGame() {
+Widget _buildGame() {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -233,14 +229,34 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
               style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
           const SizedBox(height: 16),
           Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-              ),
-              itemCount: _cards.length,
-              itemBuilder: (context, index) => _buildCard(index),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final double maxWidth = constraints.maxWidth;
+                final double maxHeight = constraints.maxHeight;
+
+                // خصم المسافات بين الكروت (3 فراغات × 10 بكسل)
+                const double totalSpacing = 10 * 3;
+
+                // حساب العرض المتاح الفعلي والارتفاع المتاح الفعلي لكل كرت بدقة
+                final double itemWidth = (maxWidth - totalSpacing) / 4;
+                final double itemHeight = (maxHeight - totalSpacing) / 4;
+
+                // حساب الـ Aspect Ratio لضمان احتواء الكروت بالكامل عمودياً وأفقياً
+                final double aspectRatio = itemWidth / itemHeight;
+
+                return GridView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    // نستخدم الـ ratio المحسوب مباشرة ليتناسب الطول مع المساحة المتبقية تماماً
+                    childAspectRatio: aspectRatio > 0 ? aspectRatio : 1.0,
+                  ),
+                  itemCount: _cards.length,
+                  itemBuilder: (context, index) => _buildCard(index),
+                );
+              },
             ),
           ),
         ],

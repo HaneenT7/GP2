@@ -279,7 +279,7 @@ class DashboardHomeContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const GreetingWidget(),
+                // const GreetingWidget(),
                 const SizedBox(height: 28),
                 const UpcomingExamsSection(),
                 const SizedBox(height: 28),
@@ -293,45 +293,45 @@ class DashboardHomeContent extends StatelessWidget {
   }
 }
 
-class GreetingWidget extends StatefulWidget {
-  const GreetingWidget({super.key});
+// class GreetingWidget extends StatefulWidget {
+//   const GreetingWidget({super.key});
 
-  @override
-  State<GreetingWidget> createState() => _GreetingWidgetState();
-}
+//   @override
+//   State<GreetingWidget> createState() => _GreetingWidgetState();
+// }
 
-class _GreetingWidgetState extends State<GreetingWidget> {
-  String _firstName = '';
+// class _GreetingWidgetState extends State<GreetingWidget> {
+//   String _firstName = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserName();
-  }
+//   @override
+//   void initState() {
+//     super.initState();
+//     _loadUserName();
+//   }
 
-  Future<void> _loadUserName() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('students')
-        .doc(user.uid)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _firstName = doc.data()?['firstName'] ?? 'Guest');
-    }
-  }
+//   Future<void> _loadUserName() async {
+//     final user = FirebaseAuth.instance.currentUser;
+//     if (user == null) return;
+//     final doc = await FirebaseFirestore.instance
+//         .collection('students')
+//         .doc(user.uid)
+//         .get();
+//     if (mounted && doc.exists) {
+//       setState(() => _firstName = doc.data()?['firstName'] ?? 'Guest');
+//     }
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        'Hello, ${_firstName.isEmpty ? "Guest" : _firstName}',
-        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Align(
+//       alignment: Alignment.centerLeft,
+//       child: Text(
+//         'Hello, ${_firstName.isEmpty ? "Guest" : _firstName}',
+//         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+//       ),
+//     );
+//   }
+// }
 
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});

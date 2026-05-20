@@ -5,9 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 class MathLabGamePage extends StatefulWidget {
-  final VoidCallback onExit; // أضيفي هذا السطر
-  const MathLabGamePage(
-      {super.key, required this.onExit}); // وأضيفي required هنا
+  final VoidCallback onExit;
+  const MathLabGamePage({super.key, required this.onExit});
 
   @override
   State<MathLabGamePage> createState() => _MathLabGamePageState();
@@ -23,6 +22,7 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
   bool _isCorrect = false;
   int _score = 0;
   bool _isFinished = false;
+  String _typedAnswer = '';
 
   static const int _totalQuestions = 5;
 
@@ -47,6 +47,7 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
       _score = 0;
       _isFinished = false;
       _answered = false;
+      _typedAnswer = '';
       _controller.clear();
     });
 
@@ -67,7 +68,6 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         );
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body) as Map<String, dynamic>;
-          // API returns "answer"; older code expected "result".
           final dynamic rawAnswer = data['answer'] ?? data['result'];
           final expr = data['expression'];
           if (rawAnswer == null || expr == null) continue;
@@ -97,9 +97,24 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
     }
   }
 
+  void _pressKey(String value) {
+    setState(() {
+      if (value == '−') {
+        if (_typedAnswer.isEmpty) _typedAnswer = '-';
+      } else if (value == '⌫') {
+        if (_typedAnswer.isNotEmpty) {
+          _typedAnswer = _typedAnswer.substring(0, _typedAnswer.length - 1);
+        }
+      } else {
+        if (_typedAnswer.length < 8) _typedAnswer += value;
+      }
+    });
+  }
+
   void _submitAnswer() {
-    if (_answered) return;
-    final answer = _controller.text.trim();
+    if (_answered || _typedAnswer.isEmpty || _typedAnswer == '-') return;
+    _controller.text = _typedAnswer;
+    final answer = _typedAnswer.trim();
     final correct = _mathAnswersMatch(answer, _questions[_currentIndex].result);
     setState(() {
       _answered = true;
@@ -114,6 +129,7 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         _currentIndex++;
         _answered = false;
         _isCorrect = false;
+        _typedAnswer = '';
         _controller.clear();
       });
     } else {
@@ -153,8 +169,8 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.close, size: 24), // تغيير السهم إلى إكس
-              onPressed: widget.onExit, // استدعاء دالة الخروج التي مررناها
+              icon: const Icon(Icons.close, size: 24),
+              onPressed: widget.onExit,
             ),
             Text(
               'Math Lab',
@@ -209,157 +225,242 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
 
   Widget _buildGame() {
     final q = _questions[_currentIndex];
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Progress
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_totalQuestions, (i) {
-                Color color;
-                if (i < _currentIndex)
-                  color = const Color(0xFF4CAF50);
-                else if (i == _currentIndex)
-                  color = q.color;
-                else
-                  color = Colors.grey.shade300;
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: 32,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Question ${_currentIndex + 1} of $_totalQuestions',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
-            ),
-            const SizedBox(height: 40),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availH = constraints.maxHeight;
+        final pad = 16.0;
+        // Fixed-height elements (approximate):
+        // progress row: 6 + 4 + 18 (text) + 10 = ~38
+        // card vertical padding: 14*2 = 28
+        // expr text: 34, gap: 8, answer box: 40
+        // gap below card: 10
+        // bottom row height: 42, gap: 8, submit: 42, gap: 8
+        const fixedH = 38.0 + 28.0 + 34.0 + 8.0 + 40.0 + 10.0 + 42.0 + 8.0 + 42.0 + 8.0;
+        // remaining space split across 3 numpad rows + 2 gaps
+        final numpadH = ((availH - fixedH - pad * 2) / 4).clamp(36.0, 80.0);
+        final gap = 8.0;
 
-            // Expression card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: q.color, width: 2),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    q.expression,
-                    style: GoogleFonts.iceland(
-                      fontSize: 48,
-                      color: q.color,
-                      fontWeight: FontWeight.bold,
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: pad, vertical: pad),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: _answered ? MainAxisAlignment.center : MainAxisAlignment.start,
+            children: [
+              // Progress bars
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(_totalQuestions, (i) {
+                  Color color;
+                  if (i < _currentIndex)
+                    color = const Color(0xFF4CAF50);
+                  else if (i == _currentIndex)
+                    color = q.color;
+                  else
+                    color = Colors.grey.shade300;
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: 32,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (_answered) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: _isCorrect
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFFE53935),
-                        borderRadius: BorderRadius.circular(10),
+                  );
+                }),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Question ${_currentIndex + 1} of $_totalQuestions',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+
+              // Expression card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: q.color, width: 2),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      q.expression,
+                      style: GoogleFonts.iceland(
+                        fontSize: 34,
+                        color: q.color,
+                        fontWeight: FontWeight.bold,
                       ),
-                      child: Text(
-                        _isCorrect ? '✓ Correct!' : '✗ Answer: ${q.result}',
-                        style: GoogleFonts.iceland(
-                          fontSize: 24,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _answered
+                              ? (_isCorrect
+                                  ? const Color(0xFF4CAF50)
+                                  : const Color(0xFFE53935))
+                              : q.color.withOpacity(0.4),
+                          width: 1.5,
                         ),
                       ),
+                      child: Text(
+                        _typedAnswer.isEmpty ? '···' : _typedAnswer,
+                        style: GoogleFonts.iceland(
+                          fontSize: 26,
+                          color: _typedAnswer.isEmpty
+                              ? Colors.grey.shade700
+                              : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 3,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
+                    if (_answered) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _isCorrect
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFE53935),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _isCorrect ? '✓ Correct!' : '✗ Answer: ${q.result}',
+                          style: GoogleFonts.iceland(
+                            fontSize: 20,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              if (!_answered) ...[
+                // 3 rows of numpad
+                for (final row in [
+                  ['7', '8', '9'],
+                  ['4', '5', '6'],
+                  ['1', '2', '3'],
+                ]) ...[
+                  SizedBox(
+                    height: numpadH,
+                    child: Row(
+                      children: [
+                        for (int i = 0; i < row.length; i++) ...[
+                          if (i > 0) SizedBox(width: gap),
+                          Expanded(child: _numpadButton(row[i], q.color)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: gap),
                 ],
-              ),
-            ),
 
-            const SizedBox(height: 32),
+                // Bottom row: −, 0, ⌫
+                SizedBox(
+                  height: numpadH,
+                  child: Row(
+                    children: [
+                      Expanded(child: _numpadButton('−', q.color, outlined: true)),
+                      SizedBox(width: gap),
+                      Expanded(child: _numpadButton('0', q.color)),
+                      SizedBox(width: gap),
+                      Expanded(child: _numpadButton('⌫', q.color, outlined: true)),
+                    ],
+                  ),
+                ),
+                SizedBox(height: gap),
 
-            if (!_answered) ...[
-              TextField(
-                controller: _controller,
-                keyboardType:
-                    const TextInputType.numberWithOptions(signed: true),
-                textAlign: TextAlign.center,
-                autofocus: true,
-                style: GoogleFonts.iceland(
-                    fontSize: 32, fontWeight: FontWeight.bold),
-                decoration: InputDecoration(
-                  hintText: 'Your answer...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: q.color, width: 2),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: q.color, width: 2),
-                  ),
-                ),
-                onSubmitted: (_) => _submitAnswer(),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _submitAnswer,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: q.color,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                // Submit
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _submitAnswer,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: q.color,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    'SUBMIT',
-                    style: GoogleFonts.iceland(
-                      fontSize: 22,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                    child: Text(
+                      'SUBMIT',
+                      style: GoogleFonts.iceland(
+                        fontSize: 20,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ] else ...[
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _nextQuestion,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1C1C1E),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: q.color, width: 2),
+              ] else ...[
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _nextQuestion,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1C1C1E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: q.color, width: 2),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    _currentIndex < _questions.length - 1 ? 'NEXT →' : 'FINISH',
-                    style: GoogleFonts.iceland(
-                      fontSize: 22,
-                      color: q.color,
-                      fontWeight: FontWeight.bold,
+                    child: Text(
+                      _currentIndex < _questions.length - 1 ? 'NEXT →' : 'FINISH',
+                      style: GoogleFonts.iceland(
+                        fontSize: 20,
+                        color: q.color,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Builds a single numpad button.
+  Widget _numpadButton(String label, Color accentColor,
+      {bool outlined = false}) {
+    return GestureDetector(
+      onTap: () => _pressKey(label),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: outlined ? accentColor : const Color(0xFF3A3A3C),
+            width: outlined ? 2 : 1.5,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: GoogleFonts.iceland(
+            fontSize: 22,
+            color: outlined ? accentColor : Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -390,7 +491,8 @@ class _MathLabGamePageState extends State<MathLabGamePage> {
             ),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               decoration: BoxDecoration(
                 color: const Color(0xFF1C1C1E),
                 borderRadius: BorderRadius.circular(16),

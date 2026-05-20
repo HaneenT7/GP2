@@ -30,6 +30,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     if (_selectedGameWidget != null) {
       // تعديل هنا: تغليف اللعبة بـ SafeArea و Padding لمنع امتداد الكروت خلف الحواف السفلية للشاشة والقص
       return Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: Colors.white,
         body: SafeArea(
           child: Padding(

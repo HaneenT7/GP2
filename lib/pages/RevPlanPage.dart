@@ -1663,6 +1663,18 @@ class RevisionPlansListStream extends StatelessWidget {
     super.key,
   });
 
+  // Helper to cleanly update the single status field in Firestore
+  Future<void> _updatePlanStatus(String docId, String newStatus) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('revisionPlans')
+          .doc(docId)
+          .update({'status': newStatus});
+    } catch (e) {
+      debugPrint("Error auto-updating plan status to $newStatus: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
@@ -1684,14 +1696,50 @@ class RevisionPlansListStream extends StatelessWidget {
 
         for (var doc in allDocs) {
           final data = doc.data() as Map<String, dynamic>;
-          final raw = data['examDate'];
-          final date = raw is Timestamp
-              ? raw.toDate()
-              : DateTime.parse(raw.toString());
-          if (date.isAfter(now)) {
-            activePlans.add(doc);
+          final rawDate = data['examDate'];
+          final currentStatus = data['status']?.toString();
+          
+          final examDate = rawDate is Timestamp
+              ? rawDate.toDate()
+              : DateTime.parse(rawDate.toString());
+
+          // 1. Calculate user task completion metrics
+          int totalTasks = 0;
+          int completedTasks = 0;
+          final rawTasks = data['dailyTasks'];
+          if (rawTasks != null) {
+            try {
+              final List dailyTasks = rawTasks is String ? jsonDecode(rawTasks) : (rawTasks as List);
+              for (var day in dailyTasks) {
+                final tasks = day['tasks'] as List? ?? [];
+                totalTasks += tasks.length;
+                completedTasks += tasks.where((t) => t['completed'] == true).length;
+              }
+            } catch (_) {}
+          }
+
+          final bool isAllTasksFinished = totalTasks > 0 && (completedTasks == totalTasks);
+          final bool isExamDatePassed = !examDate.isAfter(now);
+
+          // 2. Resolve the true state based on your 3 criteria
+          String resolvedStatus = "ongoing"; // Default state #3
+
+          if (isAllTasksFinished) {
+            resolvedStatus = "completed"; // State #2
+          } else if (isExamDatePassed) {
+            resolvedStatus = "Passed"; // State #1
+          }
+
+          // 3. Sync with Firestore silently if it changed or if n8n forced 'completed' incorrectly
+          if (currentStatus != resolvedStatus) {
+            _updatePlanStatus(doc.id, resolvedStatus);
+          }
+
+          // 4. Group into Active vs History buckets for the UI layout
+          if (isExamDatePassed || resolvedStatus == "completed") {
+            passedPlans.add(doc); // Goes to historical/passed plans section
           } else {
-            passedPlans.add(doc);
+            activePlans.add(doc); // Stays in active views
           }
         }
 
@@ -1900,6 +1948,8 @@ class RevisionPlanCard extends StatelessWidget {
   }
 
   Widget _buildDateInfo(DateTime date, int left) {
+    final isPassed = planData['status'] == 'Passed' || left < 0;
+
     return Row(
       children: [
         const Icon(Icons.event, size: 16, color: Colors.grey),
@@ -1908,16 +1958,16 @@ class RevisionPlanCard extends StatelessWidget {
             style: const TextStyle(fontSize: 14, color: Colors.grey)),
         const SizedBox(width: 12),
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-              color: Colors.blue.shade50,
+              color: isPassed ? Colors.grey.shade100 : Colors.blue.shade50,
               borderRadius: BorderRadius.circular(12)),
-          child: Text('$left days left',
-              style: const TextStyle(
+          child: Text(
+              isPassed ? 'Passed' : '$left days left',
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue)),
+                  color: isPassed ? Colors.grey.shade700 : Colors.blue)),
         ),
       ],
     );

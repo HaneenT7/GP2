@@ -86,7 +86,7 @@ class RevisionPlanService {
   String? get _userId => _auth.currentUser?.uid;
 
   static const String _collection = 'revisionPlans';
-  static const Duration _listenTimeout = Duration(minutes: 10);
+  static const Duration _listenTimeout = Duration(minutes: 20);
 
   // ─────────────────────────────────────────
   // STEP 1 — Just send to n8n, return immediately.

@@ -35,12 +35,16 @@ class _SetUpRevPlanState extends State<SetUpRevPlan> {
   late DateTime _selectedDate;
   late DateTime _calendarDisplayMonth;
 
+  Stream<List<FolderFile>>? _filesStream;
+  Stream<List<CourseFolder>>? _foldersStream;
+
   @override
   void initState() {
     super.initState();
     final today = _dateOnly(DateTime.now());
     _selectedDate = today;
     _calendarDisplayMonth = DateTime(today.year, today.month, 1);
+    _foldersStream = _folderService.getFolders();
   }
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -176,25 +180,53 @@ Future<void> _onGenerateRevisionPlan() async {
     final selectedFiles =
         files.where((f) => _selectedFileIds.contains(f.id)).toList();
  
+    // 🔥 FIX: Sort the selected files naturally before sending to n8n
+    final alphaNumericRegex = RegExp(r'(\d+|\D+)');
+    selectedFiles.sort((a, b) {
+      List<String> aChunks = alphaNumericRegex.allMatches(a.fileName.toLowerCase()).map((m) => m.group(0)!).toList();
+      List<String> bChunks = alphaNumericRegex.allMatches(b.fileName.toLowerCase()).map((m) => m.group(0)!).toList();
+      
+      int minLength = aChunks.length < bChunks.length ? aChunks.length : bChunks.length;
+      
+      for (int i = 0; i < minLength; i++) {
+        String chunkA = aChunks[i];
+        String chunkB = bChunks[i];
+        
+        int? numA = int.tryParse(chunkA);
+        int? numB = int.tryParse(chunkB);
+        
+        if (numA != null && numB != null) {
+          if (numA != numB) return numA.compareTo(numB);
+        } else {
+          int textComp = chunkA.compareTo(chunkB);
+          if (textComp != 0) return textComp;
+        }
+      }
+      return aChunks.length.compareTo(bChunks.length);
+    });
+
+    // Extract the properly ordered lists
+    final orderedFileIds = selectedFiles.map((f) => f.id).toList();
+    final orderedFileNames = selectedFiles.map((f) => f.fileName).toList();
+    final orderedFileUrls = selectedFiles.map((f) => f.fileUrl).toList();
+
     final request = RevisionPlanRequest(
       userId: userId,
       requestId: _revisionPlanService.generateRequestId(),
       folderId: _selectedFolder!.id,
       folderName: _selectedFolder!.name,
       examDateIso: _selectedDate.toIso8601String().split('T').first,
-      selectedFileIds: _selectedFileIds.toList(),
-      selectedFileNames: selectedFiles.map((f) => f.fileName).toList(),
-      selectedFileUrls: selectedFiles.map((f) => f.fileUrl).toList(),
+      selectedFileIds: orderedFileIds,          
+      selectedFileNames: orderedFileNames,      
+      selectedFileUrls: orderedFileUrls,        
     );
  
-    // Just send to n8n — do NOT await the result here.
-    // RevPlanPage will listen for completion in the background.
+    // Send cleanly organized payload to n8n
     await _revisionPlanService.sendToN8n(request);
  
-    // Close the form and hand off the folder name + requestId to parent.
     widget.onPlanGenerated(
       _selectedFolder!.name,
-      request.requestId, // <-- pass requestId so RevPlanPage can listen
+      request.requestId,
     );
  
   } catch (e) {
@@ -408,7 +440,7 @@ Widget _buildExamDateCalendar() {
         borderRadius: BorderRadius.circular(12),
       ),
       child: StreamBuilder<List<CourseFolder>>(
-        stream: _folderService.getFolders(),
+        stream: _foldersStream, 
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Padding(
@@ -453,6 +485,7 @@ Widget _buildExamDateCalendar() {
                     onTap: () => setState(() {
                       _selectedFolder = folder;
                       _selectedFileIds.clear();
+                      _filesStream = _fileService.getFiles(folder.id);
                     }),
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
@@ -508,7 +541,7 @@ Widget _buildExamDateCalendar() {
         border: Border.all(color: Colors.grey.shade300),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: _selectedFolder == null
+      child: _selectedFolder == null || _filesStream == null
           ? Padding(
               padding: const EdgeInsets.all(24.0),
               child: Center(
@@ -520,24 +553,55 @@ Widget _buildExamDateCalendar() {
               ),
             )
           : StreamBuilder<List<FolderFile>>(
-              stream: _fileService.getFiles(_selectedFolder!.id),
+              // FIX: Use the cached stream reference so rebuilding doesn't disconnect/reconnect
+              stream: _filesStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState ==
-                    ConnectionState.waiting) {
+                // This now ONLY fires when the Firestore collection updates, 
+                // not when local selection changes via FilterChip tap.
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
                       padding: EdgeInsets.all(24.0),
-                      child: Center(
-                          child: CircularProgressIndicator()));
+                      child: Center(child: CircularProgressIndicator()));
                 }
                 if (snapshot.hasError) {
                   return Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Center(
                           child: Text('Error loading files',
-                              style: TextStyle(
-                                  color: Colors.red[700]))));
+                              style: TextStyle(color: Colors.red[700]))));
                 }
+                
                 final files = snapshot.data ?? [];
+
+                // Sort files using NATURAL alphanumeric sorting
+                files.sort((a, b) {
+                  final alphaNumericRegex = RegExp(r'(\d+|\D+)');
+                  
+                  List<String> aChunks = alphaNumericRegex.allMatches(a.fileName.toLowerCase()).map((m) => m.group(0)!).toList();
+                  List<String> bChunks = alphaNumericRegex.allMatches(b.fileName.toLowerCase()).map((m) => m.group(0)!).toList();
+                  
+                  int minLength = aChunks.length < bChunks.length ? aChunks.length : bChunks.length;
+                  
+                  for (int i = 0; i < minLength; i++) {
+                    String chunkA = aChunks[i];
+                    String chunkY = bChunks[i];
+                    
+                    int? numA = int.tryParse(chunkA);
+                    int? numB = int.tryParse(chunkY);
+                    
+                    if (numA != null && numB != null) {
+                      if (numA != numB) {
+                        return numA.compareTo(numB);
+                      }
+                    } else {
+                      int textComp = chunkA.compareTo(chunkY);
+                      if (textComp != 0) return textComp;
+                    }
+                  }
+                  
+                  return aChunks.length.compareTo(bChunks.length);
+                });
+
                 if (files.isEmpty) {
                   return Padding(
                     padding: const EdgeInsets.all(24.0),

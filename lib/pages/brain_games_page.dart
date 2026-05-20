@@ -28,7 +28,17 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
   @override
   Widget build(BuildContext context) {
     if (_selectedGameWidget != null) {
-      return _selectedGameWidget!;
+      // تعديل هنا: تغليف اللعبة بـ SafeArea و Padding لمنع امتداد الكروت خلف الحواف السفلية للشاشة والقص
+      return Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0), // إعطاء مساحة أمان علوية وسفلية للعبة
+            child: _selectedGameWidget!,
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -38,21 +48,20 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
           Expanded(
             child: Stack(
               children: [
-                // FIXED: Normal vertical scrolling view to view wrapped dynamic grid layouts cleanly
                 SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildGameCards(context),
-                      const SizedBox(height: 140), // Slightly minimized vertical space padding safely
+                      const SizedBox(height: 140),
                     ],
                   ),
                 ),
                 Positioned(
                   right: 24,
                   bottom: 24,
-                  child: IgnorePointer(child: _buildBrainIllustration(context)), // Added IgnorePointer to prevent background block interaction issues
+                  child: IgnorePointer(child: _buildBrainIllustration(context)),
                 ),
               ],
             ),
@@ -171,16 +180,14 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
       ),
     ];
 
-    // FIXED: Removed the Horizontal SingleChildScrollView Row architecture entirely. 
-    // Replaced with a GridView setup that automatically shapes column amounts based on screen spaces safely.
     return GridView.builder(
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(), // Disables inner grid scrolling so it scrolls naturally with main view body
+      physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 260, // Maximum target width threshold for cards before fracturing rows
+        maxCrossAxisExtent: 260,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        childAspectRatio: 0.72, // Balanced vertical layout calculation width vs height proportion alignment
+        childAspectRatio: 0.72,
       ),
       itemCount: cards.length,
       itemBuilder: (context, index) {
@@ -211,7 +218,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     );
   }
 
-  static const double _previewFontSize = 24; // Lowered slightly from 32 to handle squishing responsive behaviors beautifully
+  static const double _previewFontSize = 24;
 
   Widget _buildMathLabPreview() {
     const problems = [
@@ -305,7 +312,7 @@ class _BrainGamesPageState extends State<BrainGamesPage> {
     return Align(
       alignment: Alignment.bottomRight,
       child: SizedBox(
-        width: 180, // Scaled down slightly to not choke visibility constraints on minor screens
+        width: 180,
         height: 180,
         child: Image.asset(
           'assets/images/brain_lift.png',
@@ -350,7 +357,6 @@ class _GameCardData {
 class _GameCard extends StatelessWidget {
   final _GameCardData data;
 
-  // FIXED: Removed absolute properties width/height overrides to let GridView control bounds dynamically
   const _GameCard({required this.data});
 
   @override
@@ -380,13 +386,12 @@ class _GameCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // FittedBox acts as an emergency stop protection against long card names splitting layouts
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 data.title,
                 style: GoogleFonts.iceland(
-                  fontSize: 28, // Balanced size target point
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),

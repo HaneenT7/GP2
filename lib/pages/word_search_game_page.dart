@@ -46,7 +46,6 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // API returns: "grid" (not "field"), "words" is list of objects {word, position}
         final gridRaw = data['grid'] as List;
         final wordsRaw = data['words'] as List;
 
@@ -56,7 +55,6 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
                 .toList())
             .toList();
 
-        // words is a list of objects: {"word": "...", "position": {...}}
         final words = wordsRaw.map<String>((w) {
           if (w is Map) return (w['word'] as String).toUpperCase();
           return (w as String).toUpperCase();
@@ -229,8 +227,8 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.close, size: 24), // تغيير السهم إلى إكس
-              onPressed: widget.onExit, // استدعاء دالة الخروج التي مررناها
+              icon: const Icon(Icons.close, size: 24),
+              onPressed: widget.onExit,
             ),
             Text('Search Words',
                 style: GoogleFonts.iceland(
@@ -261,14 +259,21 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
 
   Widget _buildGame() {
     final isComplete = _foundWords.length == _words.length && _words.isNotEmpty;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           if (isComplete) _buildWinBanner(),
           _buildWordList(),
-          const SizedBox(height: 20),
-          _buildGrid(),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: _buildGrid(),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -334,25 +339,26 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
     return LayoutBuilder(builder: (context, constraints) {
       const outline = 2.0;
       final availW = constraints.maxWidth;
-      // Outer stroke fits inside [availW]; inner cells fill remainder so Row sum never overflows.
-      final innerW = availW - 2 * outline;
+      final availH = constraints.maxHeight;
+      final size = (availW < availH ? availW : availH);
+
+      final innerW = size - 2 * outline;
       final cellSize = innerW / cols;
-      final gridH = cellSize * rows;
 
       void pointerToCell(Offset global, void Function(int r, int c) fn) {
         final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
         if (box == null) return;
         final local = box.globalToLocal(global);
-        // Pointer coords are inside padded inner content (outline inset).
         final ix = (local.dx - outline).clamp(0.0, innerW);
-        final iy = (local.dy - outline).clamp(0.0, gridH);
+        final iy = (local.dy - outline).clamp(0.0, innerW);
         final c = (ix / cellSize).floor().clamp(0, cols - 1);
         final r = (iy / cellSize).floor().clamp(0, rows - 1);
         fn(r, c);
       }
 
       return SizedBox(
-        width: availW,
+        width: size,
+        height: size,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (details) {
@@ -365,7 +371,8 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
           onPanCancel: () => _onPanEnd(context),
           child: Container(
             key: _gridKey,
-            width: availW,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               color: const Color(0xFF1C1C1E),
               borderRadius: BorderRadius.circular(12),
@@ -377,44 +384,46 @@ class _WordSearchGamePageState extends State<WordSearchGamePage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(rows, (row) {
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(cols, (col) {
-                      final selected = _isCellSelected(row, col);
-                      final solvedIdx = _getSolvedColorIndex(row, col);
-                      final isSolved = solvedIdx >= 0;
-                      Color cellColor = Colors.transparent;
-                      if (selected) {
-                        cellColor =
-                            const Color(0xFF64B5F6).withValues(alpha: 0.5);
-                      }
-                      if (isSolved) {
-                        cellColor =
-                            _solvedColors[solvedIdx % _solvedColors.length];
-                      }
+                  return Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(cols, (col) {
+                        final selected = _isCellSelected(row, col);
+                        final solvedIdx = _getSolvedColorIndex(row, col);
+                        final isSolved = solvedIdx >= 0;
+                        Color cellColor = Colors.transparent;
+                        if (selected) {
+                          cellColor =
+                              const Color(0xFF64B5F6).withValues(alpha: 0.5);
+                        }
+                        if (isSolved) {
+                          cellColor =
+                              _solvedColors[solvedIdx % _solvedColors.length];
+                        }
 
-                      return Container(
-                        width: cellSize,
-                        height: cellSize,
-                        decoration: BoxDecoration(
-                          color: cellColor,
-                          border: Border.all(
-                              color: Colors.grey.shade700, width: 0.3),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _grid[row][col],
-                            style: GoogleFonts.iceland(
-                              fontSize: cellSize * 0.55,
-                              fontWeight: FontWeight.bold,
-                              color: isSolved || selected
-                                  ? Colors.white
-                                  : const Color(0xFF64B5F6),
+                        return Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: cellColor,
+                              border: Border.all(
+                                  color: Colors.grey.shade700, width: 0.3),
+                            ),
+                            child: Center(
+                              child: Text(
+                                _grid[row][col],
+                                style: GoogleFonts.iceland(
+                                  fontSize: cellSize * 0.55,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSolved || selected
+                                      ? Colors.white
+                                      : const Color(0xFF64B5F6),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ),
                   );
                 }),
               ),

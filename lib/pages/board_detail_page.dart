@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 class SnapData {
   final Uint8List bytes;
@@ -76,7 +77,7 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
           .collection('boards')
           .doc(_boardDocId)
           .collection('snaps')
-          .get();
+          .get(const GetOptions(source: Source.serverAndCache));
 
       final docs = snapsSnapshot.docs.toList()
         ..sort((a, b) {
@@ -90,36 +91,27 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
 
       print('Found ${docs.length} snaps in Firestore');
       final loadedSnaps = <SnapData>[];
+      var skippedCount = 0;
 
-      for (var doc in docs) {
+      for (var i = 0; i < docs.length; i++) {
+        final doc = docs[i];
         final data = doc.data();
         final storageUrl = data['storageUrl'] as String?;
         final imageBase64 = data['imageBase64'] as String?;
-        final positionX = (data['positionX'] as num?)?.toDouble() ?? 50.0;
-        final positionY = (data['positionY'] as num?)?.toDouble() ?? 50.0;
+        var positionX = (data['positionX'] as num?)?.toDouble();
+        var positionY = (data['positionY'] as num?)?.toDouble();
 
-        Uint8List? bytes;
-
-        if (imageBase64 != null && imageBase64.isNotEmpty) {
-          try {
-            bytes = Uint8List.fromList(base64Decode(imageBase64));
-            print('Loaded snap from Firestore (base64): ${doc.id}');
-          } catch (e) {
-            print('Error decoding base64 for snap ${doc.id}: $e');
-          }
+        if (positionX == null || positionY == null) {
+          final fallback = _defaultPositionForIndex(i);
+          positionX = fallback.dx;
+          positionY = fallback.dy;
         }
 
-        if (bytes == null && storageUrl != null && storageUrl.isNotEmpty) {
-          try {
-            final ref = _storage.refFromURL(storageUrl);
-            bytes = await ref.getData();
-            if (bytes != null && bytes.isNotEmpty) {
-              print('Loaded snap from Storage: ${doc.id}');
-            }
-          } catch (e) {
-            print('Error loading from storage for snap ${doc.id}: $e');
-          }
-        }
+        final bytes = await _resolveSnapImageBytes(
+          snapId: doc.id,
+          imageBase64: imageBase64,
+          storageUrl: storageUrl,
+        );
 
         if (bytes != null && bytes.isNotEmpty) {
           loadedSnaps.add(SnapData(
@@ -128,15 +120,43 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
             storageUrl: storageUrl,
             snapId: doc.id,
           ));
+        } else {
+          skippedCount++;
         }
       }
 
-      print('Successfully loaded ${loadedSnaps.length} snaps');
+      final usedPositions = <String>{};
+      for (var i = 0; i < loadedSnaps.length; i++) {
+        final key =
+            '${loadedSnaps[i].position.dx.round()},${loadedSnaps[i].position.dy.round()}';
+        if (usedPositions.contains(key)) {
+          loadedSnaps[i].position = _defaultPositionForIndex(i);
+        }
+        usedPositions.add(
+            '${loadedSnaps[i].position.dx.round()},${loadedSnaps[i].position.dy.round()}');
+      }
+
+      print(
+          'Successfully loaded ${loadedSnaps.length} snaps (${skippedCount} skipped)');
       setState(() {
         _snaps.clear();
         _snaps.addAll(loadedSnaps);
         _isLoading = false;
       });
+
+      if (mounted && skippedCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              skippedCount == 1
+                  ? '1 snap could not be loaded (missing image data).'
+                  : '$skippedCount snaps could not be loaded (missing image data).',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } catch (e, stackTrace) {
       print('Error loading snaps: $e');
       print('Stack trace: $stackTrace');
@@ -160,17 +180,70 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
 
   static const int _maxBase64Bytes = 700000;
 
+  Offset _defaultPositionForIndex(int index) {
+    const cardSize = 140.0;
+    const gap = 24.0;
+    const cols = 3;
+    final col = index % cols;
+    final row = index ~/ cols;
+    return Offset(
+      50.0 + col * (cardSize + gap),
+      50.0 + row * (cardSize + gap),
+    );
+  }
+
+  Future<Uint8List?> _resolveSnapImageBytes({
+    required String snapId,
+    String? imageBase64,
+    String? storageUrl,
+  }) async {
+    if (imageBase64 != null && imageBase64.isNotEmpty) {
+      try {
+        final decoded = Uint8List.fromList(base64Decode(imageBase64));
+        if (decoded.isNotEmpty) {
+          print('Loaded snap from Firestore (base64): $snapId');
+          return decoded;
+        }
+      } catch (e) {
+        print('Error decoding base64 for snap $snapId: $e');
+      }
+    }
+
+    if (storageUrl != null && storageUrl.isNotEmpty) {
+      try {
+        final ref = _storage.refFromURL(storageUrl);
+        final data = await ref.getData();
+        if (data != null && data.isNotEmpty) {
+          print('Loaded snap from Storage (getData): $snapId');
+          return data;
+        }
+      } catch (e) {
+        print('Storage getData failed for snap $snapId: $e');
+      }
+
+      try {
+        final response = await http.get(Uri.parse(storageUrl));
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          print('Loaded snap from Storage URL (http): $snapId');
+          return response.bodyBytes;
+        }
+        print(
+            'HTTP download failed for snap $snapId: status ${response.statusCode}');
+      } catch (e) {
+        print('HTTP download failed for snap $snapId: $e');
+      }
+    }
+
+    print('Could not load image bytes for snap $snapId');
+    return null;
+  }
+
   Future<void> _saveSnapToFirestore(SnapData snap, {int? index}) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
 
     final hasStorageUrl = snap.storageUrl != null && snap.storageUrl!.isNotEmpty;
     final canSaveBase64 = snap.bytes.length <= _maxBase64Bytes;
-
-    if (!hasStorageUrl && !canSaveBase64) {
-      print('Cannot save: image too large for Firestore fallback (${snap.bytes.length} bytes)');
-      return;
-    }
 
     try {
       final snapData = <String, dynamic>{
@@ -182,9 +255,18 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
       if (hasStorageUrl) {
         snapData['storageUrl'] = snap.storageUrl;
       } else {
-        snapData['imageBase64'] = base64Encode(snap.bytes);
         snapData['storageUrl'] = null;
-        print('Saving snap image in Firestore (base64, ${snap.bytes.length} bytes)');
+      }
+
+      // Keep a Firestore copy when small enough so snaps still load if Storage fails.
+      if (canSaveBase64) {
+        snapData['imageBase64'] = base64Encode(snap.bytes);
+        print(
+            'Saving snap image in Firestore (base64, ${snap.bytes.length} bytes)');
+      } else if (!hasStorageUrl) {
+        print(
+            'Cannot save: image too large for Firestore fallback (${snap.bytes.length} bytes)');
+        return;
       }
 
       // ── CHANGED: also ensure the board document exists with its name ──
@@ -345,10 +427,7 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
 
           final newSnap = SnapData(
             bytes: imageBytes,
-            position: Offset(
-              50.0 + _random.nextDouble() * 200,
-              50.0 + _random.nextDouble() * 200,
-            ),
+            position: _defaultPositionForIndex(_snaps.length),
           );
           final newIndex = _snaps.length;
           setState(() {
@@ -396,36 +475,35 @@ class _BoardDetailPageState extends State<BoardDetailPage> {
               await _saveSnapToFirestore(_snaps[newIndex], index: newIndex);
             }
 
-            if (mounted) {
-              if (storageUrl != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Snap saved to cloud!'),
-                    duration: Duration(seconds: 2),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Snap saved on this device (image stored in cloud).'),
-                    duration: Duration(seconds: 3),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
-            }
-          } catch (e) {
-            print('Upload error: $e');
-            if (mounted) {
+            if (!mounted) return;
+            if (storageUrl != null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Snap on board; cloud save failed: $e'),
+                const SnackBar(
+                  content: Text('Snap saved to cloud!'),
+                  duration: Duration(seconds: 2),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Snap saved on this device (image stored in cloud).'),
+                  duration: Duration(seconds: 3),
                   backgroundColor: Colors.orange,
-                  duration: const Duration(seconds: 4),
                 ),
               );
             }
+          } catch (e) {
+            print('Upload error: $e');
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Snap on board; cloud save failed: $e'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
           }
         },
       ),

@@ -17,6 +17,10 @@ class _SignInPageState extends State<SignInPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
+  // State variables to catch and display Firebase API errors inline
+  String? _firebaseEmailError;
+  String? _firebasePasswordError;
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
@@ -27,6 +31,12 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _signIn() async {
+    // Clear any previous backend errors before validating again
+    setState(() {
+      _firebaseEmailError = null;
+      _firebasePasswordError = null;
+    });
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -39,7 +49,6 @@ class _SignInPageState extends State<SignInPage> {
       print('🔵 Starting sign in process...');
       print('Email: ${_emailController.text.trim()}');
 
-      // Sign in with email and password
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -47,7 +56,6 @@ class _SignInPageState extends State<SignInPage> {
 
       print('✅ Sign in successful: ${userCredential.user!.uid}');
 
-      // Navigate to Dashboard
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => DashBoard()),
@@ -56,32 +64,38 @@ class _SignInPageState extends State<SignInPage> {
       }
     } on FirebaseAuthException catch (e) {
       print('❌ FirebaseAuthException: ${e.code} - ${e.message}');
-      String errorMessage;
+      
+      setState(() {
+        switch (e.code) {
+          case 'user-not-found':
+          case 'invalid-email':
+            _firebaseEmailError = 'No user found with this email or format is invalid.';
+            break;
+          case 'wrong-password':
+            _firebasePasswordError = 'Incorrect password.';
+            break;
+          case 'user-disabled':
+            _firebaseEmailError = 'This account has been disabled.';
+            break;
+          case 'invalid-credential':
+            // Modern Firebase targets this generic error code for security.
+            // We apply it inline to the password field or customize as needed.
+            _firebasePasswordError = 'Invalid email or password.';
+            break;
+          default:
+            _firebasePasswordError = e.message ?? 'An error occurred during sign in.';
+        }
+      });
 
-      switch (e.code) {
-        case 'user-not-found':
-          errorMessage = 'No user found with this email.';
-          break;
-        case 'wrong-password':
-          errorMessage = 'Incorrect password.';
-          break;
-        case 'invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'user-disabled':
-          errorMessage = 'This account has been disabled.';
-          break;
-        case 'invalid-credential':
-          errorMessage = 'Invalid email or password.';
-          break;
-        default:
-          errorMessage = e.message ?? 'An error occurred during sign in.';
-      }
+      // Force the form to rebuild and display our freshly set inline error messages
+      _formKey.currentState!.validate();
 
-      _showErrorDialog(errorMessage);
     } catch (e) {
       print('❌ Unexpected error: $e');
-      _showErrorDialog('An unexpected error occurred. Please try again.');
+      setState(() {
+        _firebasePasswordError = 'An unexpected error occurred. Please try again.';
+      });
+      _formKey.currentState!.validate();
     } finally {
       if (mounted) {
         setState(() {
@@ -89,22 +103,6 @@ class _SignInPageState extends State<SignInPage> {
         });
       }
     }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign In Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   String? _validateEmail(String? value) {
@@ -116,14 +114,16 @@ class _SignInPageState extends State<SignInPage> {
     if (!emailRegex.hasMatch(value)) {
       return 'Enter a valid email';
     }
-    return null;
+    // Return the backend error if one exists
+    return _firebaseEmailError;
   }
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Password is required';
     }
-    return null;
+    // Return the backend error if one exists
+    return _firebasePasswordError;
   }
 
   @override

@@ -3,6 +3,7 @@ import '../models/course_folder.dart';
 import '../services/folder_service.dart';
 import '../widgets/create_folder_dialog.dart';
 import 'folder_detail_page.dart';
+import '../widgets/pill_toast.dart';
 
 class CourseFoldersPage extends StatefulWidget {
   const CourseFoldersPage({super.key});
@@ -297,7 +298,11 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
         onFolderCreated: (name, color) async {
           await _folderService.createFolder(name, color);
           if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-          if (context.mounted) _showSuccessDialog('New Course Folder', 'The new course folder is added successfully');
+          if (context.mounted) PillToast.show(
+        context,
+        message: 'Folder "$name" created',
+        icon: Icons.create_new_folder_outlined,
+      );
         },
         folderColors: _folderColors,
       ),
@@ -343,10 +348,11 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
                   await _folderService.updateFolder(folder.id, newName);
                   if (context.mounted) {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Folder updated successfully')),
-                    );
-                  }
+                    PillToast.show(
+                        context,
+                        message: 'Folder updated successfully',
+                        icon: Icons.edit_note_rounded, // A nice icon for editing/updating
+                      );                  }
                 } catch (e) {
                   setDialogState(() {
                     errorMessage = e.toString().contains('already exists')
@@ -397,7 +403,6 @@ class _CourseFoldersPageState extends State<CourseFoldersPage> {
                       if (context.mounted) {
                         Navigator.pop(context); // Close Confirmation Dialog
                         
-                        // Show the minimalist fading pill toast directly on screen
                         final overlayState = Overlay.of(context);
                         _showFadingPill(overlayState, 'Folder deleted');
                       }

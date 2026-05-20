@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'board_detail_page.dart';
 import 'package:gp2_watad/pages/DashBoard.dart';
 import 'package:gp2_watad/widgets/app_header.dart';
-
+import '../widgets/pill_toast.dart';
 
 class SnapsBoardPage extends StatefulWidget {
   const SnapsBoardPage({super.key});
@@ -14,7 +14,6 @@ class SnapsBoardPage extends StatefulWidget {
 }
 
 class _SnapsBoardPageState extends State<SnapsBoardPage> {
-  // ── CHANGED: replaced hardcoded list with empty list + Firestore ──
   final List<Map<String, String>> _boards = []; // {id, name}
   bool _isLoading = true;
 
@@ -27,10 +26,9 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
   @override
   void initState() {
     super.initState();
-    _loadBoards(); // ── CHANGED: load from Firestore on startup ──
+    _loadBoards();
   }
 
-  // ── CHANGED: fetch boards from Firestore ──
   Future<void> _loadBoards() async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) {
@@ -62,7 +60,6 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
     return name.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  // ── use board name as document ID to stay consistent with old data ──
   Future<void> _createBoard(String name) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -71,7 +68,7 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
         .collection('students')
         .doc(userId)
         .collection('boards')
-        .doc(name) // ← name is the document ID
+        .doc(name)
         .set({
       'name': name,
       'createdAt': FieldValue.serverTimestamp(),
@@ -82,7 +79,6 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
     });
   }
 
-  // ── CHANGED: rename board in Firestore ──
   Future<void> _renameBoard(int index, String newName) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -100,7 +96,6 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
     });
   }
 
-  // ── CHANGED: delete board from Firestore ──
   Future<void> _deleteBoard(int index) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -137,8 +132,15 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
           }
 
           Navigator.pop(context);
-          await _createBoard(normalizedName); // ── CHANGED ──
-          _showSuccessModal();
+          await _createBoard(normalizedName);
+          
+          if (mounted) {
+            PillToast.show(
+              this.context,
+              message: 'Board "$normalizedName" created successfully',
+              icon: Icons.check,
+            );
+          }
         },
         onClose: () => Navigator.pop(context),
       ),
@@ -159,16 +161,6 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
             child: const Text('OK'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showSuccessModal() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _SuccessModal(
-        onOk: () => Navigator.pop(context),
       ),
     );
   }
@@ -194,20 +186,22 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
           }
 
           Navigator.pop(context);
-          await _renameBoard(index, normalizedName); // ── CHANGED ──
+          await _renameBoard(index, normalizedName);
         },
         onClose: () => Navigator.pop(context),
       ),
     );
   }
 
-  void _showDeleteConfirmation(int index) {
+  void _showDeleteConfirmation(int index, BuildContext parentContext) {
+    final boardName = _boards[index]['name'] ?? '';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Board'),
         content: Text(
-          'Are you sure you want to delete "${_boards[index]['name']}"?',
+          'Are you sure you want to delete "$boardName"?',
         ),
         actions: [
           TextButton(
@@ -217,7 +211,15 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _deleteBoard(index); // ── CHANGED ──
+              await _deleteBoard(index);
+              
+              if (mounted) {
+                PillToast.show(
+                  parentContext,
+                  message: 'Board "$boardName" deleted',
+                  icon: Icons.delete_outline,
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
@@ -228,70 +230,68 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
   }
 
   @override
-Widget build(BuildContext context) {
-  if (_selectedBoardName != null && _selectedBoardId != null) {
-    return BoardDetailPage(
-      boardName: _selectedBoardName!,
-      boardId: _selectedBoardId!,
-      onBack: () => setState(() {
-        _selectedBoardName = null;
-        _selectedBoardId = null;
-      }),
+  Widget build(BuildContext context) {
+    if (_selectedBoardName != null && _selectedBoardId != null) {
+      return BoardDetailPage(
+        boardName: _selectedBoardName!,
+        boardId: _selectedBoardId!,
+        onBack: () => setState(() {
+          _selectedBoardName = null;
+          _selectedBoardId = null;
+        }),
+      );
+    }
+
+    const purpleDark = Color(0xFF4C1D95);
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.only(top: 0, bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _openCreateBoardModal,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: purpleDark,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('Create New Board'),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          _isLoading
+              ? const Expanded(
+                  child: Center(child: CircularProgressIndicator()))
+              : Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return _buildBoardsGrid(
+                            constraints.maxWidth, constraints.maxHeight);
+                      },
+                    ),
+                  ),
+                ),
+        ],
+      ),
     );
   }
-
-  const purpleDark = Color(0xFF4C1D95);
-
-  return Container(
-    color: Colors.white,
-    padding: const EdgeInsets.only(top: 0, bottom: 24), // top 0 so header hits the top
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end, // Aligns button to the right
-            children: [
-              ElevatedButton.icon(
-                onPressed: _openCreateBoardModal,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: purpleDark,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text('Create New Board'),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // 3. THE BOARDS GRID
-        _isLoading
-            ? const Expanded(
-                child: Center(child: CircularProgressIndicator()))
-            : Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return _buildBoardsGrid(
-                          constraints.maxWidth, constraints.maxHeight);
-                    },
-                  ),
-                ),
-              ),
-      ],
-    ),
-  );
-}
-
 
   Widget _buildBoardsGrid(double availableWidth, double availableHeight) {
     const horizontalSpacing = 20.0;
@@ -311,21 +311,18 @@ Widget build(BuildContext context) {
       itemBuilder: (context, index) {
         return _BoardCard(
           name: _boards[index]['name']!,
-          // ── CHANGED: pass boardId when opening detail page ──
           onTap: () => setState(() {
             _selectedBoardName = _boards[index]['name'];
             _selectedBoardId = _boards[index]['id'];
           }),
           onRename: () =>
               _showRenameDialog(index, _boards[index]['name']!),
-          onDelete: () => _showDeleteConfirmation(index),
+          onDelete: () => _showDeleteConfirmation(index, context),
         );
       },
     );
   }
 }
-
-// ── No changes below this line ──
 
 class _BoardCard extends StatelessWidget {
   final String name;
@@ -580,70 +577,6 @@ class _RenameBoardModalState extends State<_RenameBoardModal> {
           child: const Text('Ok'),
         ),
       ],
-    );
-  }
-}
-
-class _SuccessModal extends StatelessWidget {
-  final VoidCallback onOk;
-
-  const _SuccessModal({required this.onOk});
-
-  @override
-  Widget build(BuildContext context) {
-    const purpleDark = Color(0xFF4C1D95);
-    const lightBlue = Color(0xFF60A5FA);
-
-    return Dialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE9D5FF),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check, size: 44, color: lightBlue),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'New Snaps Board Created!',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "You can find this board created among all the boards.",
-              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onOk,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: purpleDark,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('Ok'),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

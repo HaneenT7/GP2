@@ -36,9 +36,22 @@ class NotificationService {
     tz_data.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
 
+    // 1. إعدادات الأندرويد
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    // 2. إعدادات الـ iOS
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    // 3. التمرير الصحيح باستخدام الكلمة المفتاحية settings:
     await _localPlugin.initialize(
-      settings: const InitializationSettings(android: android),
+      settings: const InitializationSettings( // 💡 أضفنا كلمة settings: هنا لحل الخطأ
+        android: android,
+        iOS: ios,
+      ),
       onDidReceiveNotificationResponse: (response) {
         onNotificationPayload?.call(response.payload);
       },

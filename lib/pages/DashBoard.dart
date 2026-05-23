@@ -1142,7 +1142,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                   ),
                   child: Text(
-                    'Take Quiz',
+                    'Quiz',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,

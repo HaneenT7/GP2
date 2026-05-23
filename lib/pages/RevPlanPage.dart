@@ -11,6 +11,8 @@ import 'package:gp2_watad/services/revision_plan_service.dart';
 import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
 import '../services/revision_plan_regenerate_client.dart';
+import '../services/task_quiz_service.dart';
+import 'quiz_page.dart';
 
 const Color _planPurple = Color(0xFF4B3D8E);
 
@@ -143,6 +145,11 @@ _revisionPlanService.listenForPlan(
                     userId: user.uid,
                     generatingFolderName: _generatingFolderName,
                     onPlanTapped: _openPlanDetail,
+                    onGeneratingPlanResolved: () {
+                      if (_generatingFolderName != null && mounted) {
+                        setState(() => _generatingFolderName = null);
+                      }
+                    },
                   ),
           ),
         ],
@@ -1396,6 +1403,73 @@ class _TaskCard extends StatelessWidget {
           'Moved to ${DateFormat('MMM d').format(targetDate)}.'),
     ));
   }
+
+  Future<void> _takeQuizForTask(BuildContext context) async {
+    final title = task['title']?.toString() ?? 'Study task';
+    final folder =
+        planData['folderName']?.toString() ?? task['course']?.toString() ?? '';
+    final pdfName = task['fileName']?.toString() ?? '';
+    final pages = task['pages']?.toString() ?? '';
+    final taskId = revisionTaskId(task);
+    final dateKey = _toIsoDate(selectedDate);
+    final fullDailyTasks = List<dynamic>.from(dailyTasks);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Generating quiz for "$title"...',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final quiz = await TaskQuizService.generateTaskQuiz(
+        taskTitle: title,
+        subject: folder,
+        topic: pages.isNotEmpty ? 'Pages: $pages' : null,
+        materialTitle: pdfName.isNotEmpty ? pdfName : null,
+      );
+
+      if (!context.mounted) return;
+      Navigator.pop(context);
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuizPage(
+            quiz: quiz,
+            onExit: () => Navigator.pop(context),
+            taskDocId: planId,
+            taskId: taskId,
+            dateKey: dateKey,
+            fullDailyTasks: fullDailyTasks,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error generating quiz: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}',
+          ),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
  
   @override
   Widget build(BuildContext context) {
@@ -1588,24 +1662,20 @@ class _TaskCard extends StatelessWidget {
                     Material(
                       color: isCompleted
                           ? const Color(0xFF52C41A)
-                          : const Color(0xFFF5F5F5),
+                          : const Color(0xFF7C3AED),
                       borderRadius: BorderRadius.circular(8),
                       child: InkWell(
-                        onTap: () {
-                          // TODO: connect quiz page
-                        },
+                        onTap: () => _takeQuizForTask(context),
                         borderRadius: BorderRadius.circular(8),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
                           child: Text(
                             'Take Quiz',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: isCompleted
-                                  ? Colors.white
-                                  : Colors.grey.shade600,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -1655,11 +1725,13 @@ class RevisionPlansListStream extends StatelessWidget {
   final String userId;
   final String? generatingFolderName;
   final void Function(String planId, Map<String, dynamic> planData) onPlanTapped;
+  final VoidCallback? onGeneratingPlanResolved;
 
   const RevisionPlansListStream({
     required this.userId,
     required this.onPlanTapped,
     this.generatingFolderName,
+    this.onGeneratingPlanResolved,
     super.key,
   });
 
@@ -1743,6 +1815,19 @@ class RevisionPlansListStream extends StatelessWidget {
           }
         }
 
+        if (generatingFolderName != null && onGeneratingPlanResolved != null) {
+          for (final doc in allDocs) {
+            final data = doc.data() as Map<String, dynamic>;
+            if (data['folderName'] == generatingFolderName &&
+                RevisionPlanService.hasGeneratedSchedule(data)) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                onGeneratingPlanResolved!();
+              });
+              break;
+            }
+          }
+        }
+
         if (allDocs.isEmpty && generatingFolderName == null) {
           return const _EmptyState();
         }
@@ -1782,14 +1867,28 @@ class _PlansListContainer extends StatefulWidget {
 class _PlansListContainerState extends State<_PlansListContainer> {
   bool _passedExpanded = false;
 
+  bool _hasReadyPlanForFolder(String folderName) {
+    for (final doc in widget.activePlans) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['folderName'] == folderName &&
+          RevisionPlanService.hasGeneratedSchedule(data)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showGeneratingCard = widget.generatingFolderName != null &&
+        !_hasReadyPlanForFolder(widget.generatingFolderName!);
+
     return RepaintBoundary(
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          if (widget.generatingFolderName != null) ...[
+          if (showGeneratingCard) ...[
             _GeneratingPlanCard(folderName: widget.generatingFolderName!),
             const SizedBox(height: 8),
           ],

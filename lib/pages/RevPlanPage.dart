@@ -84,31 +84,29 @@ class _RevPlanPageState extends State<RevPlanPage> {
               _isSetupMode = false;
               _generatingFolderName = folderName;
             });
-_revisionPlanService.listenForPlan(
-  requestId: requestId,
-  onCompleted: (result) {
-
-    if (result.status == 'completed') {
-      if (mounted) {
-        setState(() => _generatingFolderName = null);
-        _showToast(folderName);
-      } else {
-        _generatingFolderName = null;
-      }
-    } else {
-      if (mounted) {
-        setState(() => _generatingFolderName = null);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.errorMessage ?? 'Something went wrong.'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      }
-    }
-  },
-);          },
+            _revisionPlanService.listenForPlan(
+              requestId: requestId,
+onCompleted: (result) {
+  if (result.status == 'error') {
+    if (mounted) {
+      setState(() => _generatingFolderName = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage ?? 'Something went wrong.'),
+          backgroundColor: Colors.red.shade700,
         ),
+      );
+    }
+  } else {
+    // ongoing, completed, or passed — all mean plan is ready
+    if (mounted) {
+      setState(() => _generatingFolderName = null);
+      _showToast(folderName);
+    }
+  }
+},            );
+          
+            },        ),
       );
     }
 
@@ -1082,7 +1080,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
-  Future<void> _confirmRegenerateFullPlan(
+  Future<void> _confirmRegenerateFullPlan(  //i think we need to delete this
       Map<String, dynamic> planData) async {
     final ok = await showDialog<bool>(
       context: context,

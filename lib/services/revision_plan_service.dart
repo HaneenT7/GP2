@@ -55,29 +55,27 @@ class RevisionPlanResult {
     this.completedAt,
   });
 
-  static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
-    String rawStatus =
-        (data['status'] as String? ?? 'pending').toLowerCase();
+static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
+  String rawStatus = (data['status'] as String? ?? 'pending').toLowerCase();
 
-    if (rawStatus == 'pending' && data.containsKey('dailyTasks')) {
-      rawStatus = 'completed';
-    }
-
-    return RevisionPlanResult(
-      requestId: data['planId'] as String? ??
-          data['requestId'] as String? ??
-          '',
-      status: rawStatus,
-      planContent: data['planContent'] as String?,
-      errorMessage: data['errorMessage'] as String?,
-      completedAt: data['completedAt'] != null
-          ? (data['completedAt'] is Timestamp
-              ? (data['completedAt'] as Timestamp).toDate()
-              : DateTime.tryParse(data['completedAt'].toString()))
-          : null,
-    );
+  // 'ongoing', 'completed', 'passed' all mean generation succeeded
+  // Only keep waiting if status is still 'pending' with no dailyTasks yet
+  if (rawStatus == 'pending' && data.containsKey('dailyTasks')) {
+    rawStatus = 'ongoing';
   }
-}
+
+  return RevisionPlanResult(
+    requestId: data['planId'] as String? ?? data['requestId'] as String? ?? '',
+    status: rawStatus,
+    planContent: data['planContent'] as String?,
+    errorMessage: data['errorMessage'] as String?,
+    completedAt: data['completedAt'] != null
+        ? (data['completedAt'] is Timestamp
+            ? (data['completedAt'] as Timestamp).toDate()
+            : DateTime.tryParse(data['completedAt'].toString()))
+        : null,
+  );
+}}
 
 class RevisionPlanService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -115,55 +113,48 @@ class RevisionPlanService {
   // after the form closes. Calls onCompleted when
   // n8n finishes writing the plan.
   // ─────────────────────────────────────────
-  void listenForPlan({
-    required String requestId,
-    required void Function(RevisionPlanResult result) onCompleted,
-  }) {
-    final docRef = _firestore.collection(_collection).doc(requestId);
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
-    Timer? timeoutTimer;
+void listenForPlan({
+  required String requestId,
+  required void Function(RevisionPlanResult result) onCompleted,
+}) {
+  final docRef = _firestore.collection(_collection).doc(requestId);
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
+  Timer? timeoutTimer;
+  bool finished = false;
 
-    void finish(RevisionPlanResult result) {
-      sub?.cancel();
-      timeoutTimer?.cancel();
-      onCompleted(result);
-    }
-
-    // Immediate check — did n8n already finish?
-    docRef.get().then((initialDoc) {
-      if (initialDoc.exists) {
-        final result =
-            RevisionPlanResult.fromFirestore(initialDoc.data()!);
-        if (result.status == 'completed' ||
-            result.status == 'error') {
-          finish(result);
-          return;
-        }
-      }
-
-      // Set timeout
-      timeoutTimer = Timer(_listenTimeout, () {
-        finish(RevisionPlanResult(
-          requestId: requestId,
-          status: 'error',
-          errorMessage: 'Timeout waiting for plan',
-        ));
-      });
-
-      // Listen for changes
-      sub = docRef
-          .snapshots(includeMetadataChanges: true)
-          .listen((snap) {
-        if (!snap.exists || snap.data() == null) return;
-        final result =
-            RevisionPlanResult.fromFirestore(snap.data()!);
-        if (result.status == 'completed' ||
-            result.status == 'error') {
-          finish(result);
-        }
-      });
-    });
+  void finish(RevisionPlanResult result) {
+    if (finished) return;
+    finished = true;
+    sub?.cancel();
+    timeoutTimer?.cancel();
+    onCompleted(result);
   }
+
+  timeoutTimer = Timer(_listenTimeout, () {
+    finish(RevisionPlanResult(
+      requestId: requestId,
+      status: 'error',
+      errorMessage: 'Timeout waiting for plan',
+    ));
+  });
+
+  sub = docRef.snapshots().listen((snap) {
+    if (!snap.exists || snap.data() == null) return;
+    final result = RevisionPlanResult.fromFirestore(snap.data()!);
+    if (result.status == 'ongoing' ||
+        result.status == 'completed' ||
+        result.status == 'passed' ||
+        result.status == 'error') {
+      finish(result);
+    }
+  }, onError: (e) {
+    finish(RevisionPlanResult(
+      requestId: requestId,
+      status: 'error',
+      errorMessage: e.toString(),
+    ));
+  });
+}
   // ─────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────

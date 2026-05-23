@@ -55,12 +55,28 @@ class RevisionPlanResult {
     this.completedAt,
   });
 
+  /// True when n8n has written a schedule (list UI may set [status] to "ongoing").
+  static bool hasGeneratedSchedule(Map<String, dynamic> data) {
+    final raw = data['dailyTasks'];
+    if (raw == null) return false;
+    if (raw is List) return raw.isNotEmpty;
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        return decoded is List && decoded.isNotEmpty;
+      } catch (_) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 static RevisionPlanResult fromFirestore(Map<String, dynamic> data) {
   String rawStatus = (data['status'] as String? ?? 'pending').toLowerCase();
 
   // 'ongoing', 'completed', 'passed' all mean generation succeeded
   // Only keep waiting if status is still 'pending' with no dailyTasks yet
-  if (rawStatus == 'pending' && data.containsKey('dailyTasks')) {
+  if (hasGeneratedSchedule(data)) {
     rawStatus = 'ongoing';
   }
 
@@ -84,6 +100,10 @@ class RevisionPlanService {
   String? get _userId => _auth.currentUser?.uid;
 
   static const String _collection = 'revisionPlans';
+
+  /// Whether Firestore data includes a generated daily schedule.
+  static bool hasGeneratedSchedule(Map<String, dynamic> data) =>
+      RevisionPlanResult.hasGeneratedSchedule(data);
   static const Duration _listenTimeout = Duration(minutes: 20);
 
   // ─────────────────────────────────────────

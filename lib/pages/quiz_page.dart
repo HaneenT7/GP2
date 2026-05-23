@@ -155,22 +155,50 @@ class _QuizPageState extends State<QuizPage> {
       });
     }
 
-    return SafeArea(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/images/brain_character.png',
-                height: 200,
-                errorBuilder: (_, __, ___) => const Icon(Icons.emoji_events, size: 100, color: Color(0xFF5C3D9E)),
-              ),
-              const SizedBox(height: 24),
-              Text("$message $emoji", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-              const SizedBox(height: 12),
-              Text("You got $score/$total", style: const TextStyle(fontSize: 22, color: Color(0xFF444466), fontWeight: FontWeight.w600)),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/images/brain_character.png',
+                  height: 200,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.emoji_events, size: 100, color: Color(0xFF5C3D9E)),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A2E),
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 26, decoration: TextDecoration.none),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'You got $score/$total',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    color: Color(0xFF444466),
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
               
               // Show auto-mark notification if applicable
               if (percentage >= 0.8) ...[
@@ -210,7 +238,8 @@ class _QuizPageState extends State<QuizPage> {
                   child: const Text("Ok", style: TextStyle(fontSize: 16)),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

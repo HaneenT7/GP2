@@ -513,9 +513,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: _regeneratingPlan
+              onPressed: _regeneratingPlan || overdueCount == 0
                   ? null
-                  : () => _openRegenerateOptions(planData, dailyTasks),
+                  : () => _rescheduleOverdue(planData, dailyTasks),
               icon: const Icon(Icons.auto_fix_high_outlined, size: 16),
               label: const Text('Reschedule AI',
                   style: TextStyle(fontSize: 13)),
@@ -1010,103 +1010,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
-  // ── Regenerate helpers ───────────────────────────────────────────────────
-
-  Future<void> _openRegenerateOptions(
-      Map<String, dynamic> planData, List<dynamic> dailyTasks) async {
-    final overdueCount = countOverdueTasks(dailyTasks);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Regenerate with AI',
-                style: Theme.of(ctx)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose what to rebuild. Completed tasks stay unchanged.',
-                style: TextStyle(
-                    fontSize: 13, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Icon(Icons.event_busy,
-                    color: Colors.deepOrange.shade800),
-                title: const Text('Reschedule overdue tasks only'),
-                subtitle: Text(
-                  overdueCount > 0
-                      ? 'Moves incomplete past tasks into upcoming days.'
-                      : 'No overdue tasks right now.',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.grey.shade600),
-                ),
-                enabled: overdueCount > 0,
-                onTap: overdueCount == 0
-                    ? null
-                    : () {
-                        Navigator.pop(ctx);
-                        _rescheduleOverdue(planData, dailyTasks);
-                      },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_month,
-                    color: _planPurple),
-                title: const Text('Regenerate full plan'),
-                subtitle: Text(
-                  'Rebuilds all incomplete work to fit availability and exam date.',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.grey.shade600),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmRegenerateFullPlan(planData);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmRegenerateFullPlan(  //i think we need to delete this
-      Map<String, dynamic> planData) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Regenerate full plan?'),
-        content: const Text(
-          'All incomplete tasks will be rescheduled from scratch while keeping completed tasks.',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Regenerate')),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    await _runRegenerate(
-      status: 'Regenerating full plan…',
-      action: () => _regenerateClient.regenerateFullPlan(
-          planId: widget.planId, planData: planData),
-      successMessage: 'Full plan updated.',
-    );
-  }
+  // ── Reschedule overdue ───────────────────────────────────────────────────
 
   Future<void> _rescheduleOverdue(
       Map<String, dynamic> planData, List<dynamic> dailyTasks) async {

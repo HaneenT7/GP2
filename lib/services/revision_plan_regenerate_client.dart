@@ -315,49 +315,4 @@ class RevisionPlanRegenerateClient {
       requiredTaskIds: overdueTaskIds,
     );
   }
-
-  Future<RevisionPlanResult> regenerateFullPlan({
-    required String planId,
-    required Map<String, dynamic> planData,
-  }) async {
-    final userId = _userId;
-    if (userId == null) {
-      throw Exception('Please sign in to regenerate the plan.');
-    }
-
-    final dailyTasks = _parseDailyTasksField(planData);
-    if (dailyTasks.isEmpty) {
-      throw Exception('No plan tasks to regenerate.');
-    }
-    final overdue = collectOverdueTasksForReschedule(dailyTasks);
-    if (overdue.isEmpty) {
-      throw Exception(
-        'No overdue tasks to reschedule. Non-overdue tasks are kept unchanged.',
-      );
-    }
-
-    final requestId = _generateRequestId();
-    final baselineJson = jsonEncode(dailyTasks);
-    final body = <String, dynamic>{
-      ..._regenerateBaseFields(
-        userId: userId,
-        requestId: requestId,
-        planId: planId,
-        planData: planData,
-      ),
-      'existingDailyTasks': dailyTasks,
-      'existingDailyTasksJson': jsonEncode(dailyTasks),
-      'overdueTasks': overdue,
-      'overdueTasksJson': jsonEncode(overdue),
-      'rescheduleOverdue': true,
-      'regenerateFullPlan': false,
-      'preserveNonOverdueTasks': true,
-      'lockedTaskPolicy': 'keep_non_overdue_unchanged',
-      'modelInstruction':
-          'Only reschedule overdue tasks. Keep every non-overdue task exactly '
-              'as-is (same date/day bucket, order, and task content).',
-    };
-
-    return _postRegenerateWebhook(body, baselineDailyTasksJson: baselineJson);
-  }
 }

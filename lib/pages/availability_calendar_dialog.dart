@@ -76,6 +76,8 @@ class _AvailabilityCalendarDialogState extends State<AvailabilityCalendarDialog>
   bool isSaving = false;
   String? resizingBlockId;
   
+  // Controls visibility of the help banner
+  bool showHelpBanner = true; 
 
   final ScrollController _verticalScrollController = ScrollController();
   
@@ -169,16 +171,10 @@ class _AvailabilityCalendarDialogState extends State<AvailabilityCalendarDialog>
   }
 
   void _handleResize(TimeBlock block, Offset delta, double currentHeight) {
-    // 1. Accumulate movement
     _dragBuffer += delta.dy;
-    
-    // 2. Convert buffer to hours
     double hourDelta = _dragBuffer / hourHeight;
-    
-    // 3. Only act if the movement is significant enough to change time (0.25h = 15m)
     if (hourDelta.abs() < 0.25) return;
 
-    // 4. Find collision boundary below
     double maxPossibleEnd = 24.0;
     for (var other in blocks) {
       if (other.id == block.id || other.dayOfWeek != block.dayOfWeek) continue;
@@ -188,26 +184,23 @@ class _AvailabilityCalendarDialogState extends State<AvailabilityCalendarDialog>
     }
 
     setState(() {
-      // Calculate new end hour based on snapped buffer
       double snappedDelta = (hourDelta * 4).round() / 4;
       double newEndHour = block.endHour + snappedDelta;
 
-      // Apply constraints
       if (newEndHour > maxPossibleEnd) newEndHour = maxPossibleEnd;
       if (newEndHour < block.startHour + 0.5) newEndHour = block.startHour + 0.5;
 
       if (newEndHour != block.endHour) {
         final index = blocks.indexWhere((b) => b.id == block.id);
         if (index != -1) blocks[index] = block.copyWith(endHour: newEndHour);
-        _dragBuffer = 0; // Reset buffer only after a successful change
+        _dragBuffer = 0; 
       }
     });
   }
 
-void _handleResizeTop(TimeBlock block, Offset delta) {
+  void _handleResizeTop(TimeBlock block, Offset delta) {
     _dragBuffer += delta.dy;
     double hourDelta = _dragBuffer / hourHeight;
-    
     if (hourDelta.abs() < 0.25) return;
 
     double minPossibleStart = 0.0;
@@ -237,7 +230,7 @@ void _handleResizeTop(TimeBlock block, Offset delta) {
     if (_isPositionOverlap('', dayOfWeek, startHour, startHour + 0.5)) return;
     final newBlock = TimeBlock(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: '', // Title is no longer used
+      title: '', 
       dayOfWeek: dayOfWeek,
       startHour: startHour,
       endHour: (startHour + 1.0).clamp(0.0, 24.0),
@@ -256,28 +249,70 @@ void _handleResizeTop(TimeBlock block, Offset delta) {
 
   // --- UI Methods ---
 
- @override
-Widget build(BuildContext context) {
-  return Dialog(
-    backgroundColor: Colors.white,
-    insetPadding: const EdgeInsets.all(16),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    child: SizedBox(
-      width: 850,  // Reduced from 1000
-      height: 550, // Reduced from 650
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(child: _buildCalendarBody()),
-            _buildFooter(),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: SizedBox(
+        width: 850,  
+        height: 580, // Slightly increased dialog max height to accommodate the banner seamlessly
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            children: [
+              _buildHeader(),
+              if (showHelpBanner) _buildHelpBanner(), // Renders only if active
+              Expanded(child: _buildCalendarBody()),
+              _buildFooter(),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildHelpBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E8FF), // Light purple background
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE9D5FF)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            '👆', // Using accessible emoji matching your pointer requirement
+            style: TextStyle(fontSize: 16),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Long press on the grid to mark when you\'re unavailable. • Drag handles to resize.',
+              style: TextStyle(
+                color: Color(0xFF6B21A8), // Dark purple text
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18, color: Color(0xFF701A75)),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              setState(() {
+                showHelpBanner = false;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildCalendarBody() {
     if (isLoading) return const Center(child: CircularProgressIndicator());
@@ -359,98 +394,95 @@ Widget build(BuildContext context) {
     );
   }
 
-Widget _buildTimeBlock(TimeBlock block, double dayWidth) {
-  final left = (block.dayOfWeek - 1) * dayWidth;
-  final top = block.startHour * hourHeight;
-  final height = (block.endHour - block.startHour) * hourHeight;
+  Widget _buildTimeBlock(TimeBlock block, double dayWidth) {
+    final left = (block.dayOfWeek - 1) * dayWidth;
+    final top = block.startHour * hourHeight;
+    final height = (block.endHour - block.startHour) * hourHeight;
 
-  return Positioned(
-    left: left + 2,
-    top: top + 1,
-    width: dayWidth - 4,
-    height: height - 2,
-    child: Stack(
-      clipBehavior: Clip.none,
-      children: [
-        GestureDetector(
-          onTap: () => _showEditDialog(block),
-          onPanUpdate: (details) {
-            if (resizingBlockId != null) return;
-            _handleMoveWithDayWidth(block, details.delta, left, top, dayWidth);
-          },
-          child: Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: BoxDecoration(
-              color: block.color.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(6), // Slightly smaller radius
-              border: Border.all(color: block.color.withOpacity(0.5)),
+    return Positioned(
+      left: left + 2,
+      top: top + 1,
+      width: dayWidth - 4,
+      height: height - 2,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          GestureDetector(
+            onTap: () => _showEditDialog(block),
+            onPanUpdate: (details) {
+              if (resizingBlockId != null) return;
+              _handleMoveWithDayWidth(block, details.delta, left, top, dayWidth);
+            },
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: block.color.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(6), 
+                border: Border.all(color: block.color.withOpacity(0.5)),
+              ),
+              padding: const EdgeInsets.only(top: 4, left: 2, right: 2), 
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Text(
+                  '${_formatHour(block.startHour)}\n${_formatHour(block.endHour)}', 
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 8, 
+                    fontWeight: FontWeight.w600, 
+                    color: Colors.black87,
+                    height: 1.2,
+                  ),
+                ),
+              ),
             ),
-            padding: const EdgeInsets.only(top: 4, left: 2, right: 2), 
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Text(
-                '${_formatHour(block.startHour)}\n${_formatHour(block.endHour)}', // Split into two lines for better fit
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 8, // Smaller font
-                  fontWeight: FontWeight.w600, 
-                  color: Colors.black87,
-                  height: 1.2,
+          ),
+          _buildResizeHandle(block, true, height),
+          _buildResizeHandle(block, false, height),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResizeHandle(TimeBlock block, bool isTop, double currentHeight) {
+    return Positioned(
+      top: isTop ? -7.5: null,
+      bottom: isTop ? null : -7.5,
+      left: 0,
+      right: 0,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragStart: (_) {
+          _dragBuffer = 0;
+          setState(() => resizingBlockId = block.id);
+        },
+        onVerticalDragUpdate: (details) {
+          if (isTop) {
+            _handleResizeTop(block, details.delta);
+          } else {
+            _handleResize(block, details.delta, currentHeight);
+          }
+        },
+        onVerticalDragEnd: (_) => setState(() => resizingBlockId = null),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeUpDown,
+          child: SizedBox(
+            height: 20, 
+            child: Center(
+              child: Container(
+                width: 35, 
+                height: 4, 
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9333EA).withOpacity(0.4), 
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
           ),
         ),
-        _buildResizeHandle(block, true, height),
-        _buildResizeHandle(block, false, height),
-      ],
-    ),
-  );
-}
-
-Widget _buildResizeHandle(TimeBlock block, bool isTop, double currentHeight) {
-  return Positioned(
-    // By using -5.5, the handle sits directly ON the edge border
-    top: isTop ? -7.5: null,
-    bottom: isTop ? null : -7.5,
-    left: 0,
-    right: 0,
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragStart: (_) {
-        _dragBuffer = 0;
-        setState(() => resizingBlockId = block.id);
-      },
-      onVerticalDragUpdate: (details) {
-        if (isTop) {
-          _handleResizeTop(block, details.delta);
-        } else {
-          _handleResize(block, details.delta, currentHeight);
-        }
-      },
-      onVerticalDragEnd: (_) => setState(() => resizingBlockId = null),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeUpDown,
-        child: SizedBox(
-          height: 20, // The hit area for the finger
-          child: Center(
-            child: Container(
-              width: 35, // Slightly wider bar
-              height: 4, 
-              decoration: BoxDecoration(
-                // Using a darker version of your theme purple for the handle
-                color: const Color(0xFF9333EA).withOpacity(0.4), 
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
       ),
-    ),
-  );
-}
-  // --- Header, Footer, and Dialogs ---
+    );
+  }
 
   Widget _buildHeader() {
     return Container(
@@ -463,7 +495,6 @@ Widget _buildResizeHandle(TimeBlock block, bool isTop, double currentHeight) {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Configure Availability', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text('Long press to add • Drag handles to resize', style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
           OutlinedButton.icon(

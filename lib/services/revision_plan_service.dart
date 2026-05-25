@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show SocketException;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import '../utils/revision_plan_errors.dart';
 
 /// Payload sent to n8n webhook.
 class RevisionPlanRequest {
@@ -93,16 +95,24 @@ class RevisionPlanService {
   Future<void> sendToN8n(RevisionPlanRequest request) async {
     final uri = Uri.parse(n8nRevisionPlanWebhookUrl);
 
-    final response = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: utf8.encode(jsonEncode(request.toJson())),
-        )
-        .timeout(const Duration(seconds: 60));
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: utf8.encode(jsonEncode(request.toJson())),
+          )
+          .timeout(const Duration(seconds: 60));
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Webhook failed: ${response.statusCode}');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Webhook failed: ${response.statusCode}');
+      }
+    } on TimeoutException {
+      throw Exception(RevisionPlanErrors.networkUnreachable);
+    } on SocketException {
+      throw Exception(RevisionPlanErrors.networkUnreachable);
+    } catch (e) {
+      throw Exception(RevisionPlanErrors.fromException(e));
     }
   }
 
@@ -133,7 +143,7 @@ void listenForPlan({
     finish(RevisionPlanResult(
       requestId: requestId,
       status: 'error',
-      errorMessage: 'Timeout waiting for plan',
+      errorMessage: RevisionPlanErrors.planTimedOut,
     ));
   });
 
@@ -150,7 +160,7 @@ void listenForPlan({
     finish(RevisionPlanResult(
       requestId: requestId,
       status: 'error',
-      errorMessage: e.toString(),
+      errorMessage: RevisionPlanErrors.fromException(e),
     ));
   });
 }

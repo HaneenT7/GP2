@@ -5,7 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import 'dart:io' show SocketException;
+
 import '../config/app_config.dart';
+import '../utils/revision_plan_errors.dart';
 import '../utils/revision_plan_overdue.dart';
 import 'revision_plan_service.dart' show RevisionPlanResult;
 
@@ -193,10 +196,7 @@ class RevisionPlanRegenerateClient {
       finish(RevisionPlanResult(
         requestId: planId,
         status: 'error',
-        errorMessage:
-            'Reschedule is taking too long. Check your connection and n8n workflow, '
-            'then try again. The workflow must update revisionPlans/$planId with '
-            'dailyTasks when finished.',
+        errorMessage: RevisionPlanErrors.rescheduleTimedOut,
       ));
     });
 
@@ -249,18 +249,24 @@ class RevisionPlanRegenerateClient {
       );
     }
 
-    final response = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: utf8.encode(jsonEncode(body)),
-        )
-        .timeout(const Duration(seconds: 30));
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: utf8.encode(jsonEncode(body)),
+          )
+          .timeout(const Duration(seconds: 30));
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Webhook failed: ${response.statusCode} ${response.body}',
-      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Webhook failed: ${response.statusCode}');
+      }
+    } on TimeoutException {
+      throw Exception(RevisionPlanErrors.networkUnreachable);
+    } on SocketException {
+      throw Exception(RevisionPlanErrors.networkUnreachable);
+    } catch (e) {
+      throw Exception(RevisionPlanErrors.fromException(e));
     }
 
     return _waitForRegeneratePlan(

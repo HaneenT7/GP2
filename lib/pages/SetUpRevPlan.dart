@@ -5,6 +5,8 @@ import '../models/folder_file.dart';
 import '../services/folder_service.dart';
 import '../services/file_service.dart';
 import '../services/revision_plan_service.dart';
+import '../utils/revision_plan_errors.dart';
+import '../utils/revision_plan_error_dialog.dart';
 
 class SetUpRevPlan extends StatefulWidget {
   final VoidCallback onClose;
@@ -232,9 +234,9 @@ Future<void> _onGenerateRevisionPlan() async {
   } catch (e) {
     if (mounted) {
       setState(() => _isSubmitting = false);
-      _showSnackBar(
-        'Error: ${e.toString().replaceFirst(RegExp(r'^Exception: '), '')}',
-        isError: true,
+      await showRevisionPlanErrorDialog(
+        context,
+        message: RevisionPlanErrors.fromException(e),
       );
     }
   }

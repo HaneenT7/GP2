@@ -10,6 +10,8 @@ import 'package:gp2_watad/widgets/revision_plan_exam_day_card.dart';
 import 'package:gp2_watad/services/revision_plan_service.dart';
 import '../theme/revision_task_card_style.dart';
 import '../utils/revision_plan_overdue.dart';
+import '../utils/revision_plan_errors.dart';
+import '../utils/revision_plan_error_dialog.dart';
 import '../services/revision_plan_regenerate_client.dart';
 
 const Color _planPurple = Color(0xFF4B3D8E);
@@ -90,11 +92,9 @@ onCompleted: (result) {
   if (result.status == 'error') {
     if (mounted) {
       setState(() => _generatingFolderName = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.errorMessage ?? 'Something went wrong.'),
-          backgroundColor: Colors.red.shade700,
-        ),
+      showRevisionPlanErrorDialog(
+        context,
+        message: RevisionPlanErrors.forResult(result),
       );
     }
   } else {
@@ -1116,17 +1116,17 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(successMessage)));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result.errorMessage ?? 'Regeneration failed'),
-          backgroundColor: Colors.red.shade700,
-        ));
+        await showRevisionPlanErrorDialog(
+          context,
+          message: RevisionPlanErrors.forResult(result, isReschedule: true),
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')),
-        backgroundColor: Colors.red.shade700,
-      ));
+      await showRevisionPlanErrorDialog(
+        context,
+        message: RevisionPlanErrors.fromException(e),
+      );
     } finally {
       if (mounted) {
         setState(() {

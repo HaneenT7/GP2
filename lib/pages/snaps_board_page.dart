@@ -250,27 +250,29 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _openCreateBoardModal,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: purpleDark,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+          // Only show top create button if boards already exist to avoid redundancy
+          if (!_isLoading && _boards.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _openCreateBoardModal,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: purpleDark,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
+                    icon: const Icon(Icons.add, size: 20),
+                    label: const Text('Create New Board'),
                   ),
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('Create New Board'),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           const SizedBox(height: 20),
 
@@ -280,16 +282,115 @@ class _SnapsBoardPageState extends State<SnapsBoardPage> {
               : Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        return _buildBoardsGrid(
-                            constraints.maxWidth, constraints.maxHeight);
-                      },
-                    ),
+                    child: _boards.isEmpty
+                        ? _buildEmptyStateOnboarding(purpleDark)
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              return _buildBoardsGrid(
+                                  constraints.maxWidth, constraints.maxHeight);
+                            },
+                          ),
                   ),
                 ),
         ],
       ),
+    );
+  }
+
+  Widget _buildEmptyStateOnboarding(Color purpleDark) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(Icons.photo_library_outlined, size: 64, color: purpleDark.withOpacity(0.4)),
+            const SizedBox(height: 16),
+            const Text(
+              'Save lesson photos in one place',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Create custom boards to keep important lecture materials and lesson snippets organized\nfor smooth, quick revision sessions.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.black54,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+            
+            // Minimal step items
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildStepItem(Icons.dashboard_customize_outlined, 'Create a board'),
+                _buildStepArrow(),
+                _buildStepItem(Icons.add_photo_alternate_outlined, 'Add your photos'),
+                _buildStepArrow(),
+                _buildStepItem(Icons.auto_stories_outlined, 'Revise anytime'),
+              ],
+            ),
+            const SizedBox(height: 40),
+            
+            ElevatedButton.icon(
+              onPressed: _openCreateBoardModal,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: purpleDark,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 2,
+              ),
+              icon: const Icon(Icons.add, size: 22),
+              label: const Text(
+                'Create your first board',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepItem(IconData icon, String text) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E8FF),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: const Color(0xFF6B46C1), size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepArrow() {
+    return const Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+      child: Icon(Icons.arrow_forward, color: Colors.black, size: 18),
     );
   }
 

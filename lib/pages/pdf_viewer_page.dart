@@ -65,7 +65,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  Future<void> _generateQuizFromPdf() async {
+  /*Future<void> _generateQuizFromPdf() async {
     setState(() {
       _isGeneratingQuiz = true;
     });
@@ -117,7 +117,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
     setState(() {
       _isGeneratingQuiz = false;
     });
-  }
+  }*/
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +128,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        actions: [
+        /*actions: [
           if (widget.file.fileUrl.startsWith('http'))
             IconButton(
               icon: const Icon(Icons.open_in_new),
@@ -139,7 +139,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
             icon: const Icon(Icons.quiz),
             onPressed: _isGeneratingQuiz ? null : _generateQuizFromPdf,
           ),
-        ],
+        ],*/
       ),
       body: FutureBuilder<Uint8List>(
         future: _pdfBytesFuture,

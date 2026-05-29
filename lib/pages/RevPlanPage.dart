@@ -13,6 +13,7 @@ import '../utils/revision_plan_overdue.dart';
 import '../utils/revision_plan_errors.dart';
 import '../utils/revision_plan_error_dialog.dart';
 import '../services/revision_plan_regenerate_client.dart';
+import 'package:flutter/foundation.dart';
 
 const Color _planPurple = Color(0xFF4B3D8E);
 
@@ -82,31 +83,39 @@ class _RevPlanPageState extends State<RevPlanPage> {
         body: SetUpRevPlan(
           onClose: () => setState(() => _isSetupMode = false),
           onPlanGenerated: (folderName, requestId) {
+            final stopwatch = Stopwatch()..start();
+            debugPrint('⏱️ Started measuring plan generation time...');
+
             setState(() {
               _isSetupMode = false;
               _generatingFolderName = folderName;
             });
             _revisionPlanService.listenForPlan(
               requestId: requestId,
-onCompleted: (result) {
-  if (result.status == 'error') {
-    if (mounted) {
-      setState(() => _generatingFolderName = null);
-      showRevisionPlanErrorDialog(
-        context,
-        message: RevisionPlanErrors.forResult(result),
-      );
-    }
-  } else {
-    // ongoing, completed, or passed — all mean plan is ready
-    if (mounted) {
-      setState(() => _generatingFolderName = null);
-      _showToast(folderName);
-    }
-  }
-},            );
-          
-            },        ),
+              onCompleted: (result) {
+                stopwatch.stop();
+                if (result.status == 'error') {
+                  debugPrint('⏱️ Generation failed. Time elapsed: ${stopwatch.elapsed.inSeconds} seconds');
+                  if (mounted) {
+                    setState(() => _generatingFolderName = null);
+                    showRevisionPlanErrorDialog(
+                      context,
+                      message: RevisionPlanErrors.forResult(result),
+                    );
+                  }
+                } else {
+                  debugPrint('⏱️ Revision plan generated successfully!');
+                  debugPrint('Total processing time: ${stopwatch.elapsed.inSeconds} seconds (${stopwatch.elapsedMilliseconds} ms)');
+                  // ongoing, completed, or passed — all mean plan is ready
+                  if (mounted) {
+                    setState(() => _generatingFolderName = null);
+                    _showToast(folderName);
+                  }
+                }
+              },
+            );
+          },
+        ),
       );
     }
 
@@ -152,7 +161,8 @@ onCompleted: (result) {
     return ElevatedButton.icon(
       onPressed: () => setState(() => _isSetupMode = true),
       icon: const Icon(Icons.add, color: Colors.white),
-      label: const Text('Create New Plan', style: TextStyle(color: Colors.white)),
+      label:
+          const Text('Create New Plan', style: TextStyle(color: Colors.white)),
       style: ElevatedButton.styleFrom(
         backgroundColor: _planPurple,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -214,8 +224,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
   }
 
   bool _isDateBeforeToday(DateTime date) {
-    final today = DateTime(
-        DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final today =
+        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     final d = DateTime(date.year, date.month, date.day);
     return d.isBefore(today);
   }
@@ -249,7 +259,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       stream: _planStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return const Scaffold(body: Center(child: Text('Plan not found')));
@@ -259,7 +270,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         final dailyTasks = parseRevisionPlanDailyTasks(planData);
 
         // استخراج تاريخ الاختبار من البلان
-        final rawExamDate = planData['examDate'] ?? planData['exam_date'] ?? planData['examDateIso'];
+        final rawExamDate = planData['examDate'] ??
+            planData['exam_date'] ??
+            planData['examDateIso'];
         DateTime? examDate;
         if (rawExamDate is Timestamp) examDate = rawExamDate.toDate();
         if (rawExamDate is String) examDate = DateTime.tryParse(rawExamDate);
@@ -291,8 +304,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                               Text(
                                 DateFormat('EEEE, MMMM d').format(selectedDate),
                                 style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w600),
+                                    fontSize: 17, fontWeight: FontWeight.w600),
                               ),
                               _buildWeekNavButtons(),
                             ],
@@ -305,12 +317,14 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                       ],
                     ),
                   ),
-                  _buildTasksSliver(dailyTasks, dateKey, planData, examDateKey, planData['folderName'] ?? 'Course'),
+                  _buildTasksSliver(dailyTasks, dateKey, planData, examDateKey,
+                      planData['folderName'] ?? 'Course'),
                 ],
               ),
               if (_regeneratingPlan) ...[
                 const Positioned.fill(
-                  child: ModalBarrier(color: Colors.black26, dismissible: false),
+                  child:
+                      ModalBarrier(color: Colors.black26, dismissible: false),
                 ),
                 Center(
                   child: Card(
@@ -356,8 +370,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           Expanded(
             child: Text(
               folderName,
-              style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -411,17 +424,14 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               const SizedBox(width: 6),
               Text(
                 'Exam: ${DateFormat('MMM dd, yyyy').format(examDate)}',
-                style:
-                    const TextStyle(fontSize: 14, color: Colors.grey),
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
               ),
               const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: daysLeft <= 7
-                      ? Colors.red.shade50
-                      : Colors.blue.shade50,
+                  color:
+                      daysLeft <= 7 ? Colors.red.shade50 : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -429,17 +439,15 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: daysLeft <= 7
-                        ? Colors.red.shade700
-                        : Colors.blue,
+                    color: daysLeft <= 7 ? Colors.red.shade700 : Colors.blue,
                   ),
                 ),
               ),
               if (overdue > 0) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.deepOrange.shade50,
                     borderRadius: BorderRadius.circular(12),
@@ -448,8 +456,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.warning_amber_rounded,
-                          size: 12,
-                          color: Colors.deepOrange.shade800),
+                          size: 12, color: Colors.deepOrange.shade800),
                       const SizedBox(width: 4),
                       Text(
                         '$overdue overdue',
@@ -490,8 +497,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               const SizedBox(width: 4),
               Text(
                 '$completed/$total tasks',
-                style:
-                    TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ],
           ),
@@ -502,13 +508,13 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 
   // ── Action Toolbar ───────────────────────────────────────────────────────
 
-  Widget _buildActionToolbar(Map<String, dynamic> planData, List<dynamic> dailyTasks) {
+  Widget _buildActionToolbar(
+      Map<String, dynamic> planData, List<dynamic> dailyTasks) {
     final overdueCount = countOverdueTasks(dailyTasks);
     final folderName = planData['folderName'] ?? 'Revision Plan';
 
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
           Expanded(
@@ -517,8 +523,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                   ? null
                   : () => _rescheduleOverdue(planData, dailyTasks),
               icon: const Icon(Icons.auto_fix_high_outlined, size: 16),
-              label: const Text('Reschedule AI',
-                  style: TextStyle(fontSize: 13)),
+              label:
+                  const Text('Reschedule AI', style: TextStyle(fontSize: 13)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _planPurple,
                 side: const BorderSide(color: Color(0xFFD1C4E9)),
@@ -531,10 +537,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           const SizedBox(width: 10),
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () => _deletePlan(folderName),              
+              onPressed: () => _deletePlan(folderName),
               icon: const Icon(Icons.delete_outline, size: 16),
-              label:
-                  const Text('Delete Plan', style: TextStyle(fontSize: 13)),
+              label: const Text('Delete Plan', style: TextStyle(fontSize: 13)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red.shade700,
                 side: BorderSide(color: Colors.red.shade200),
@@ -555,7 +560,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Revision Plan?'),
-        content: Text('Are you sure you want to delete "$folderName"? This action cannot be undone.'),
+        content: Text(
+            'Are you sure you want to delete "$folderName"? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -580,9 +586,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           .collection('revisionPlans')
           .doc(widget.planId)
           .delete();
-      
-      _showFadingPill(overlayState);
 
+      _showFadingPill(overlayState);
     } catch (e) {
       debugPrint("Error deleting document: $e");
     }
@@ -603,7 +608,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
             alignment: Alignment.bottomCenter,
             child: ValueListenableBuilder<double>(
               valueListenable: opacityNotifier,
-              builder: (BuildContext context, double opacityValue, Widget? child) {
+              builder:
+                  (BuildContext context, double opacityValue, Widget? child) {
                 return AnimatedOpacity(
                   opacity: opacityValue,
                   duration: const Duration(milliseconds: 300),
@@ -614,11 +620,13 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
+                    border:
+                        Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
                     boxShadow: [
                       BoxShadow(
                         color: _planPurple.withOpacity(0.08),
@@ -651,7 +659,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
 
     overlayState.insert(entry);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (opacityNotifier.hashCode != 0) {
         opacityNotifier.value = 1.0;
@@ -838,8 +846,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           onTap: () => _jumpToFirstOverdueDay(dailyTasks),
           child: Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: Colors.deepOrange.shade200),
@@ -906,15 +913,13 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.free_breakfast,
-                  size: 56, color: Colors.grey.shade300),
+              Icon(Icons.free_breakfast, size: 56, color: Colors.grey.shade300),
               const SizedBox(height: 12),
               Text(
                 dayData == null
                     ? 'No tasks scheduled for this day'
                     : 'Rest day — no study time',
-                style: TextStyle(
-                    fontSize: 15, color: Colors.grey.shade500),
+                style: TextStyle(fontSize: 15, color: Colors.grey.shade500),
               ),
             ],
           ),
@@ -938,8 +943,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
             final taskIndex = isExamDay ? index - 1 : index;
             final task = tasks[taskIndex] as Map<dynamic, dynamic>;
             final isCompleted = task['completed'] == true;
-            final isOverdue =
-                _isDateBeforeToday(selectedDate) && !isCompleted;
+            final isOverdue = _isDateBeforeToday(selectedDate) && !isCompleted;
             final isRescheduled = task['rescheduled'] == true;
 
             return Padding(
@@ -1141,7 +1145,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
 // ─────────────────────────────────────────
 // Task Card widget
 // ─────────────────────────────────────────
- 
+
 class _TaskCard extends StatelessWidget {
   final Map<dynamic, dynamic> task;
   final int taskIndex;
@@ -1153,7 +1157,7 @@ class _TaskCard extends StatelessWidget {
   final List<dynamic> dailyTasks;
   final Map<String, dynamic> planData;
   final void Function(DateTime toDate) onMoved;
- 
+
   const _TaskCard({
     required this.task,
     required this.taskIndex,
@@ -1166,22 +1170,21 @@ class _TaskCard extends StatelessWidget {
     required this.planData,
     required this.onMoved,
   });
- 
+
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
- 
+
   String _toIsoDate(DateTime date) {
     final y = date.year.toString().padLeft(4, '0');
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
   }
- 
+
   Future<void> _toggleCompletion(BuildContext context) async {
     try {
-      final planRef = FirebaseFirestore.instance
-          .collection('revisionPlans')
-          .doc(planId);
+      final planRef =
+          FirebaseFirestore.instance.collection('revisionPlans').doc(planId);
       final snap = await planRef.get();
       if (!snap.exists) return;
       final data = snap.data()!;
@@ -1189,7 +1192,7 @@ class _TaskCard extends StatelessWidget {
       final wasString = raw is String;
       List<dynamic> tasks =
           wasString ? jsonDecode(raw) : List<dynamic>.from(raw ?? []);
- 
+
       for (var i = 0; i < tasks.length; i++) {
         final day = tasks[i];
         final dayDate = DateTime.tryParse(day['date']?.toString() ?? '');
@@ -1202,16 +1205,16 @@ class _TaskCard extends StatelessWidget {
           }
         }
       }
- 
+
       await planRef.update({
         'dailyTasks': wasString ? jsonEncode(tasks) : tasks,
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update task: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not update task: $e')));
     }
   }
- 
+
   Future<void> _pickAndMove(BuildContext context) async {
     final targetDate = await showDatePicker(
       context: context,
@@ -1226,10 +1229,9 @@ class _TaskCard extends StatelessWidget {
           const SnackBar(content: Text('Task is already on this date.')));
       return;
     }
- 
-    final planRef = FirebaseFirestore.instance
-        .collection('revisionPlans')
-        .doc(planId);
+
+    final planRef =
+        FirebaseFirestore.instance.collection('revisionPlans').doc(planId);
     final snap = await planRef.get();
     if (!snap.exists) return;
     final data = snap.data()!;
@@ -1237,7 +1239,7 @@ class _TaskCard extends StatelessWidget {
     final wasString = raw is String;
     List<dynamic> allDays =
         wasString ? jsonDecode(raw) : List<dynamic>.from(raw ?? []);
- 
+
     int srcIdx = -1;
     for (var i = 0; i < allDays.length; i++) {
       final d = DateTime.tryParse(allDays[i]['date']?.toString() ?? '');
@@ -1250,11 +1252,10 @@ class _TaskCard extends StatelessWidget {
     final srcDay = Map<String, dynamic>.from(allDays[srcIdx]);
     final srcTasks = List<dynamic>.from(srcDay['tasks'] ?? []);
     if (taskIndex >= srcTasks.length) return;
-    final movedTask =
-        Map<String, dynamic>.from(srcTasks.removeAt(taskIndex));
+    final movedTask = Map<String, dynamic>.from(srcTasks.removeAt(taskIndex));
     srcDay['tasks'] = srcTasks;
     allDays[srcIdx] = srcDay;
- 
+
     int tgtIdx = -1;
     for (var i = 0; i < allDays.length; i++) {
       final d = DateTime.tryParse(allDays[i]['date']?.toString() ?? '');
@@ -1277,7 +1278,7 @@ class _TaskCard extends StatelessWidget {
       tgtDay['tasks'] = tgtTasks;
       allDays[tgtIdx] = tgtDay;
     }
- 
+
     allDays.sort((a, b) {
       final ad = DateTime.tryParse(
           (a as Map<dynamic, dynamic>)['date']?.toString() ?? '');
@@ -1287,25 +1288,24 @@ class _TaskCard extends StatelessWidget {
       if (bd == null) return -1;
       return ad.compareTo(bd);
     });
- 
+
     await planRef.update({
       'dailyTasks': wasString ? jsonEncode(allDays) : allDays,
     });
- 
+
     onMoved(targetDate);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          'Moved to ${DateFormat('MMM d').format(targetDate)}.'),
+      content: Text('Moved to ${DateFormat('MMM d').format(targetDate)}.'),
     ));
   }
- 
+
   @override
   Widget build(BuildContext context) {
     final title = task['title']?.toString() ?? '';
     final course = task['course']?.toString() ?? '';
     final fileName = task['fileName']?.toString() ?? '';
     final pages = task['pages']?.toString() ?? '';
- 
+
     const greenCheck = Color(0xFF52C41A);
 
     return Container(
@@ -1351,23 +1351,19 @@ class _TaskCard extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                    color:
-                        isCompleted ? greenCheck : Colors.black87,
+                    color: isCompleted ? greenCheck : Colors.black87,
                     width: isCompleted ? 2 : 1,
                   ),
                 ),
                 child: isCompleted
                     ? const Center(
-                        child: Icon(Icons.check,
-                            size: 16, color: greenCheck),
+                        child: Icon(Icons.check, size: 16, color: greenCheck),
                       )
                     : null,
               ),
             ),
           ),
- 
           const SizedBox(width: 14),
- 
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1386,9 +1382,8 @@ class _TaskCard extends StatelessWidget {
                             isOverdue: isOverdue,
                             isRescheduled: isRescheduled,
                           ),
-                          decoration: isCompleted
-                              ? TextDecoration.lineThrough
-                              : null,
+                          decoration:
+                              isCompleted ? TextDecoration.lineThrough : null,
                         ),
                       ),
                     ),
@@ -1414,7 +1409,8 @@ class _TaskCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
-                          color: RevisionTaskCardStyle.rescheduledBadgeBackground,
+                          color:
+                              RevisionTaskCardStyle.rescheduledBadgeBackground,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('Rescheduled',
@@ -1426,21 +1422,16 @@ class _TaskCard extends StatelessWidget {
                     ],
                   ],
                 ),
- 
                 const SizedBox(height: 4),
- 
                 Text(
                   [course, if (fileName.isNotEmpty) fileName]
                       .where((s) => s.isNotEmpty)
                       .join(' • '),
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
- 
                 const SizedBox(height: 6),
- 
                 Row(
                   children: [
                     if (pages.isNotEmpty) ...[
@@ -1472,8 +1463,7 @@ class _TaskCard extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.drive_file_move_outline,
-                                size: 14,
-                                color: Colors.grey.shade600),
+                                size: 14, color: Colors.grey.shade600),
                             const SizedBox(width: 4),
                             Text(
                               'Move',
@@ -1556,7 +1546,8 @@ class _ConfigureButton extends StatelessWidget {
 class RevisionPlansListStream extends StatelessWidget {
   final String userId;
   final String? generatingFolderName;
-  final void Function(String planId, Map<String, dynamic> planData) onPlanTapped;
+  final void Function(String planId, Map<String, dynamic> planData)
+      onPlanTapped;
 
   const RevisionPlansListStream({
     required this.userId,
@@ -1600,7 +1591,7 @@ class RevisionPlansListStream extends StatelessWidget {
           final data = doc.data() as Map<String, dynamic>;
           final rawDate = data['examDate'];
           final currentStatus = data['status']?.toString();
-          
+
           final examDate = rawDate is Timestamp
               ? rawDate.toDate()
               : DateTime.parse(rawDate.toString());
@@ -1611,16 +1602,20 @@ class RevisionPlansListStream extends StatelessWidget {
           final rawTasks = data['dailyTasks'];
           if (rawTasks != null) {
             try {
-              final List dailyTasks = rawTasks is String ? jsonDecode(rawTasks) : (rawTasks as List);
+              final List dailyTasks = rawTasks is String
+                  ? jsonDecode(rawTasks)
+                  : (rawTasks as List);
               for (var day in dailyTasks) {
                 final tasks = day['tasks'] as List? ?? [];
                 totalTasks += tasks.length;
-                completedTasks += tasks.where((t) => t['completed'] == true).length;
+                completedTasks +=
+                    tasks.where((t) => t['completed'] == true).length;
               }
             } catch (_) {}
           }
 
-          final bool isAllTasksFinished = totalTasks > 0 && (completedTasks == totalTasks);
+          final bool isAllTasksFinished =
+              totalTasks > 0 && (completedTasks == totalTasks);
           final bool isExamDatePassed = !examDate.isAfter(now);
 
           // 2. Resolve the true state based on your 3 criteria
@@ -1668,7 +1663,8 @@ class _PlansListContainer extends StatefulWidget {
   final List<QueryDocumentSnapshot> activePlans;
   final List<QueryDocumentSnapshot> passedPlans;
   final String? generatingFolderName;
-  final void Function(String planId, Map<String, dynamic> planData) onPlanTapped;
+  final void Function(String planId, Map<String, dynamic> planData)
+      onPlanTapped;
 
   const _PlansListContainer({
     required this.activePlans,
@@ -1723,12 +1719,10 @@ class _PlansListContainerState extends State<_PlansListContainer> {
 
   Widget _buildPassedHeader() {
     return InkWell(
-      onTap: () =>
-          setState(() => _passedExpanded = !_passedExpanded),
+      onTap: () => setState(() => _passedExpanded = !_passedExpanded),
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(10),
@@ -1786,26 +1780,22 @@ class RevisionPlanCard extends StatelessWidget {
     final rawTasks = planData['dailyTasks'];
     if (rawTasks != null) {
       try {
-        final List dailyTasks = rawTasks is String
-            ? jsonDecode(rawTasks)
-            : (rawTasks as List);
+        final List dailyTasks =
+            rawTasks is String ? jsonDecode(rawTasks) : (rawTasks as List);
         int total = 0, completed = 0;
         for (var day in dailyTasks) {
           final tasks = day['tasks'] as List? ?? [];
           total += tasks.length;
-          completed +=
-              tasks.where((t) => t['completed'] == true).length;
+          completed += tasks.where((t) => t['completed'] == true).length;
         }
-        progress =
-            total > 0 ? ((completed / total) * 100).round() : 0;
+        progress = total > 0 ? ((completed / total) * 100).round() : 0;
       } catch (_) {}
     }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => onTap(planId, planData),
@@ -1864,8 +1854,7 @@ class RevisionPlanCard extends StatelessWidget {
           decoration: BoxDecoration(
               color: isPassed ? Colors.grey.shade100 : Colors.blue.shade50,
               borderRadius: BorderRadius.circular(12)),
-          child: Text(
-              isPassed ? 'Passed' : '$left days left',
+          child: Text(isPassed ? 'Passed' : '$left days left',
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -1892,9 +1881,7 @@ class RevisionPlanCard extends StatelessWidget {
         const SizedBox(width: 12),
         Text('$pct%',
             style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: _planPurple)),
+                fontSize: 14, fontWeight: FontWeight.bold, color: _planPurple)),
       ],
     );
   }
@@ -2012,13 +1999,11 @@ class _GeneratingPlanCardState extends State<_GeneratingPlanCard>
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.schedule,
-                    size: 14, color: Color(0xFF9585C8)),
+                const Icon(Icons.schedule, size: 14, color: Color(0xFF9585C8)),
                 const SizedBox(width: 6),
                 Text(
                   'Building your study schedule — this may take a moment',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.purple.shade300),
+                  style: TextStyle(fontSize: 12, color: Colors.purple.shade300),
                 ),
               ],
             ),
@@ -2136,8 +2121,7 @@ class _ToastNotification extends StatefulWidget {
   final String folderName;
   final VoidCallback onDismiss;
 
-  const _ToastNotification(
-      {required this.folderName, required this.onDismiss});
+  const _ToastNotification({required this.folderName, required this.onDismiss});
 
   @override
   State<_ToastNotification> createState() => _ToastNotificationState();
@@ -2154,16 +2138,12 @@ class _ToastNotificationState extends State<_ToastNotification>
     super.initState();
     _controller = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 350));
-    _opacity =
-        CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-            begin: const Offset(0.3, 0), end: Offset.zero)
-        .animate(CurvedAnimation(
-            parent: _controller, curve: Curves.easeOut));
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0.3, 0), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
     Future.delayed(const Duration(seconds: 4), () {
-      if (mounted)
-        _controller.reverse().then((_) => widget.onDismiss());
+      if (mounted) _controller.reverse().then((_) => widget.onDismiss());
     });
   }
 
@@ -2183,13 +2163,11 @@ class _ToastNotificationState extends State<_ToastNotification>
           color: Colors.transparent,
           child: Container(
             constraints: const BoxConstraints(maxWidth: 320),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: const Color(0xFFEDE9FA), width: 1.5),
+              border: Border.all(color: const Color(0xFFEDE9FA), width: 1.5),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withOpacity(0.10),
@@ -2204,8 +2182,7 @@ class _ToastNotificationState extends State<_ToastNotification>
                   width: 36,
                   height: 36,
                   decoration: const BoxDecoration(
-                      color: Color(0xFFEDE9FA),
-                      shape: BoxShape.circle),
+                      color: Color(0xFFEDE9FA), shape: BoxShape.circle),
                   child: const Icon(Icons.check_rounded,
                       color: Color(0xFF423066), size: 20),
                 ),
@@ -2223,19 +2200,16 @@ class _ToastNotificationState extends State<_ToastNotification>
                       const SizedBox(height: 2),
                       Text(
                           '${widget.folderName} revision plan has been created.',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600])),
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600])),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () => _controller
-                      .reverse()
-                      .then((_) => widget.onDismiss()),
-                  child: Icon(Icons.close,
-                      size: 16, color: Colors.grey[400]),
+                  onTap: () =>
+                      _controller.reverse().then((_) => widget.onDismiss()),
+                  child: Icon(Icons.close, size: 16, color: Colors.grey[400]),
                 ),
               ],
             ),

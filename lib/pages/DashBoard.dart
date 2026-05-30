@@ -47,7 +47,7 @@ class _DashBoardState extends State<DashBoard> {
       }
     });
 
-    // مراقبة النبض + تنبيه +100 والانتقال لـ Brain Games
+    // مراقبة النبض + تنبيه 100+ والانتقال لـ Brain Games
     HeartRateAlertService.onGoToBrainGames = _openBrainGames;
     NotificationService.onNotificationPayload = _onNotificationPayload;
     _handleLaunchFromHeartRateNotification();
@@ -111,6 +111,7 @@ class _DashBoardState extends State<DashBoard> {
     }
   }
 
+  // Same order as IndexedStack children
   static const _pageTitles = [
     'Dashboard',
     'Course Folder',
@@ -125,7 +126,7 @@ class _DashBoardState extends State<DashBoard> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFF4F2F8),
+      backgroundColor: const Color(0xFFF4F2F8), // off-white lavender base
       body: Row(
         children: [
           CustomSidebar(
@@ -138,8 +139,10 @@ class _DashBoardState extends State<DashBoard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Transparent topbar — part of the frame layer
                   _buildTopBar(),
                   const SizedBox(height: 16),
+                  // The floating white island
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -186,6 +189,7 @@ class _DashBoardState extends State<DashBoard> {
     );
   }
 
+  // ── شغلِك: بناء الـ TopBar مع الـ StreamBuilder لقراءة النقطة الحمراء (Badge) ──
   Widget _buildTopBar() {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -195,7 +199,7 @@ class _DashBoardState extends State<DashBoard> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            _pageTitles[_selectedIndex],
+            _pageTitles[_selectedIndex], // ← dynamic title
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -273,13 +277,14 @@ class DashboardHomeContent extends StatelessWidget {
               compact ? 16 : 32,
               compact ? 16 : 24,
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 28),
-                UpcomingExamsSection(),
-                SizedBox(height: 28),
-                DailyTasksSection(),
+                // const GreetingWidget(),
+                const SizedBox(height: 28),
+                const UpcomingExamsSection(),
+                const SizedBox(height: 28),
+                const DailyTasksSection(),
               ],
             ),
           ),
@@ -289,9 +294,50 @@ class DashboardHomeContent extends StatelessWidget {
   }
 }
 
+// class GreetingWidget extends StatefulWidget {
+//   const GreetingWidget({super.key});
+
+//   @override
+//   State<GreetingWidget> createState() => _GreetingWidgetState();
+// }
+
+// class _GreetingWidgetState extends State<GreetingWidget> {
+//   String _firstName = '';
+
+//   @override
+//   void initState() {
+//     super.initState();
+//     _loadUserName();
+//   }
+
+//   Future<void> _loadUserName() async {
+//     final user = FirebaseAuth.instance.currentUser;
+//     if (user == null) return;
+//     final doc = await FirebaseFirestore.instance
+//         .collection('students')
+//         .doc(user.uid)
+//         .get();
+//     if (mounted && doc.exists) {
+//       setState(() => _firstName = doc.data()?['firstName'] ?? 'Guest');
+//     }
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Align(
+//       alignment: Alignment.centerLeft,
+//       child: Text(
+//         'Hello, ${_firstName.isEmpty ? "Guest" : _firstName}',
+//         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+//       ),
+//     );
+//   }
+// }
+
 class UpcomingExamsSection extends StatelessWidget {
   const UpcomingExamsSection({super.key});
 
+  // Helper methods moved inside the class so it's self-contained
   DateTime? _examDateFromPlan(Map<String, dynamic> plan) {
     final raw = plan['examDate'] ?? plan['exam_date'] ?? plan['examDateIso'];
     if (raw is Timestamp) return raw.toDate();
@@ -500,6 +546,7 @@ class _QuoteCardWidgetState extends State<QuoteCardWidget> {
     _index = _seedIndexForToday();
   }
 
+  /// Stable pick per calendar day so the “daily” message refreshes naturally each day.
   int _seedIndexForToday() {
     final n = DateTime.now();
     final dayKey = n.year * 10000 + n.month * 100 + n.day;
@@ -633,6 +680,17 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
         7, (index) => _currentWeekMonday.add(Duration(days: index)));
   }
 
+  // ── نقل دالة المساعدة لمعرفة التواريخ السابقة من الملف الثاني لخدمة حساب الـ Overdue ──
+  bool _isDateBeforeToday(String dateKey) {
+    final d = DateTime.tryParse(dateKey);
+    if (d == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final day = DateTime(d.year, d.month, d.day);
+    return day.isBefore(today);
+  }
+
+  // ── شغلِك: Stream يجيب كل تواريخ الاختبارات للطالب لوضع النجمة الحمراء ──
   Stream<Set<String>> _examDatesStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return Stream.value({});
@@ -800,13 +858,14 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
           return _buildNoTasksPlaceholder("No revision plans found.");
 
         List<Widget> dailyTaskWidgets = [];
-        List<Widget> examCardWidgets = [];
+        List<Widget> examCardWidgets = []; // ── شغلِك: لتخزين بطاقات الـ Good Luck ──
 
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
           final examPassed = isRevisionPlanExamPassed(data);
           final materialTitle = data['materialTitle']?.toString();
 
+          // ── شغلِك: تحقق إذا اليوم المحدد فيه اختبار لهذا الكورس لحقن البطاقة الوردية ──
           try {
             final raw = data['examDate'] ?? data['exam_date'] ?? data['examDateIso'];
             DateTime? examDate;
@@ -864,10 +923,12 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── شغلِك: حقن بطاقات الاختبار الوردية لتظهر فوق كاملة العرض ──
                 ...examCardWidgets.map((w) => Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: w,
                 )),
+                // باقي المهام في شبكة (شغل زميلتك المتجاوب)
                 if (dailyTaskWidgets.isNotEmpty)
                   Wrap(
                     spacing: 16,
@@ -922,10 +983,44 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top row: Title and details (Icon completely removed)
+          // Top row: Checkbox on left
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              InkWell(
+                onTap: () async {
+                  for (var day in fullDailyTasks) {
+                    if (day['date'] == dateKey) {
+                      for (var t in day['tasks']) {
+                        if (t['taskId'] == taskId)
+                          t['completed'] = !(t['completed'] ?? false);
+                      }
+                    }
+                  }
+                  await FirebaseFirestore.instance
+                      .collection('revisionPlans')
+                      .doc(docId)
+                      .update({'dailyTasks': jsonEncode(fullDailyTasks)});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    isCompleted
+                        ? Icons.check_circle
+                        : isRescheduled
+                            ? Icons.schedule
+                            : Icons.radio_button_unchecked,
+                    color: isCompleted
+                        ? Colors.green
+                        : RevisionTaskCardStyle.iconAccent(
+                                isOverdue: isOverdue,
+                                isRescheduled: isRescheduled,
+                              ) ??
+                            Colors.grey,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -936,7 +1031,6 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                           child: Text(
                             title,
                             style: TextStyle(
-                              fontSize: 15,
                               fontWeight: FontWeight.w600,
                               decoration: isCompleted
                                   ? TextDecoration.lineThrough
@@ -992,6 +1086,8 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
             ],
           ),
           const SizedBox(height: 10),
+          
+          // Pages and status row
           Row(
             children: [
               if (pages.isNotEmpty) ...[
@@ -1019,7 +1115,10 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                 ),
             ],
           ),
+          
           const SizedBox(height: 12),
+          
+          // Bottom row: Take Quiz button on right
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -1069,39 +1168,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     required String dateKey,
     required List fullDailyTasks,
   }) async {
-    // 1. Show the Rule Requirement Dialog first
-    final startQuiz = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.quiz, color: Color(0xFF7C3AED)),
-            SizedBox(width: 10),
-            Text('Ready for your Quiz?', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Text(
-          'To mark this task as completed, you must pass this quiz with a score of 80% or higher.\n\nGood luck!',
-          style: TextStyle(fontSize: 15, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
-            child: const Text('Start Quiz', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (startQuiz != true) return; // User cancelled
-
-    // 2. Proceed with loading and generation if they accepted
-    if (!mounted) return;
+    // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1132,6 +1199,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
 
+      // Navigate to QuizPage with generated quiz and task info for auto-completion
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -1149,6 +1217,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
 
+      // Show error
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error generating quiz: $e'),
@@ -1158,6 +1227,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     }
   }
 
+  // ── شغلِك: تابع لكارت الـ Good luck الوردي المنقول من الملف الثاني ──
   Widget _buildExamCard(String folderName) {
     return Container(
       width: double.infinity,
@@ -1232,6 +1302,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
     );
   }
 
+  // ── شغلِك: شريط الأيام مع الـ StreamBuilder لوضع النجمة الحمراء عند وجود اختبار ──
   Widget _buildDaysBar() {
     return StreamBuilder<Set<String>>(
       stream: _examDatesStream(),
@@ -1286,6 +1357,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
                             ],
                           ),
                         ),
+                        // النجمة الحمراء إذا فيه اختبار في هذا اليوم
                         if (hasExam)
                           const Positioned(
                             top: 4,
@@ -1313,6 +1385,7 @@ class _DailyTasksSectionState extends State<DailyTasksSection> {
   }
 }
 
+// ── شغلِك: صفحة الإشعارات الكاملة والمتصلة بـ Firestore المنسوخة من الملف الثاني ──
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
 

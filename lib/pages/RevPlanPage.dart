@@ -9,9 +9,6 @@ import 'package:gp2_watad/widgets/app_header.dart';
 import 'package:gp2_watad/widgets/revision_plan_exam_day_card.dart';
 import 'package:gp2_watad/services/revision_plan_service.dart';
 import '../theme/revision_task_card_style.dart';
-import 'quiz_landing_page.dart';
-import 'quiz_page.dart';
-import '../services/task_quiz_service.dart';
 import '../utils/revision_plan_overdue.dart';
 import '../utils/revision_plan_errors.dart';
 import '../utils/revision_plan_error_dialog.dart';
@@ -96,7 +93,9 @@ class _RevPlanPageState extends State<RevPlanPage> {
             _revisionPlanService.listenForPlan(
               requestId: requestId,
               onCompleted: (result) {
+                stopwatch.stop();
                 if (result.status == 'error') {
+                  debugPrint('⏱️ Generation failed. Time elapsed: ${stopwatch.elapsed.inSeconds} seconds');
                   if (mounted) {
                     setState(() => _generatingFolderName = null);
                     showRevisionPlanErrorDialog(
@@ -105,6 +104,9 @@ class _RevPlanPageState extends State<RevPlanPage> {
                     );
                   }
                 } else {
+                  debugPrint('⏱️ Revision plan generated successfully!');
+                  debugPrint('Total processing time: ${stopwatch.elapsed.inSeconds} seconds (${stopwatch.elapsedMilliseconds} ms)');
+                  // ongoing, completed, or passed — all mean plan is ready
                   if (mounted) {
                     setState(() => _generatingFolderName = null);
                     _showToast(folderName);
@@ -159,7 +161,8 @@ class _RevPlanPageState extends State<RevPlanPage> {
     return ElevatedButton.icon(
       onPressed: () => setState(() => _isSetupMode = true),
       icon: const Icon(Icons.add, color: Colors.white),
-      label: const Text('Create New Plan', style: TextStyle(color: Colors.white)),
+      label:
+          const Text('Create New Plan', style: TextStyle(color: Colors.white)),
       style: ElevatedButton.styleFrom(
         backgroundColor: _planPurple,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -266,7 +269,10 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
         final planData = snapshot.data!.data() as Map<String, dynamic>;
         final dailyTasks = parseRevisionPlanDailyTasks(planData);
 
-        final rawExamDate = planData['examDate'] ?? planData['exam_date'] ?? planData['examDateIso'];
+        // استخراج تاريخ الاختبار من البلان
+        final rawExamDate = planData['examDate'] ??
+            planData['exam_date'] ??
+            planData['examDateIso'];
         DateTime? examDate;
         if (rawExamDate is Timestamp) examDate = rawExamDate.toDate();
         if (rawExamDate is String) examDate = DateTime.tryParse(rawExamDate);
@@ -343,6 +349,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
+  // ── Header ──────────────────────────────────────────────────────────────
+
   Widget _buildHeader(Map<String, dynamic> planData) {
     final folderName = planData['folderName'] ?? 'Revision Plan';
     return Container(
@@ -371,6 +379,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
+  // ── Info Card ────────────────────────────────────────────────────────────
+
   Widget _buildInfoCard(
       Map<String, dynamic> planData, List<dynamic> dailyTasks) {
     final rawDate = planData['examDate'];
@@ -382,6 +392,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     int total = 0, completed = 0;
     final seenForTotal = <String>{};
     for (var day in dailyTasks) {
+      final dayDate =
+          DateTime.tryParse(day['date']?.toString() ?? '') ?? DateTime.now();
       final dateKey = revisionDayDateKey(day['date']);
       for (var t in revisionPlanTasksOnDate(dailyTasks, dateKey)) {
         final id = revisionTaskId(t);
@@ -494,6 +506,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
+  // ── Action Toolbar ───────────────────────────────────────────────────────
+
   Widget _buildActionToolbar(
       Map<String, dynamic> planData, List<dynamic> dailyTasks) {
     final overdueCount = countOverdueTasks(dailyTasks);
@@ -540,6 +554,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
+  // ── delete Plan ─────────────────────────────────────────────────────
   Future<void> _deletePlan(String folderName) async {
     final confirmDelete = await showDialog<bool>(
       context: context,
@@ -571,13 +586,14 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
           .collection('revisionPlans')
           .doc(widget.planId)
           .delete();
-        
+
       _showFadingPill(overlayState);
     } catch (e) {
       debugPrint("Error deleting document: $e");
     }
   }
 
+  // ── Custom Fading Pill Animation Handler ──────────────────────────────
   void _showFadingPill(OverlayState overlayState) {
     late OverlayEntry entry;
     final ValueNotifier<double> opacityNotifier = ValueNotifier<double>(0.0);
@@ -643,7 +659,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
 
     overlayState.insert(entry);
-      
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (opacityNotifier.hashCode != 0) {
         opacityNotifier.value = 1.0;
@@ -658,6 +674,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       });
     });
   }
+
+  // ── Week nav buttons ─────────────────────────────────────────────────────
 
   Widget _buildWeekNavButtons() {
     return Row(
@@ -687,6 +705,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ],
     );
   }
+
+  // ── Days bar ───────────────────────────────────────────────────────────
+  // تعديل: أضيف examDateKey لعرض النجمة * على يوم الاختبار
 
   Widget _buildDaysBar(
     List<dynamic> dailyTasks,
@@ -760,7 +781,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                       Positioned(
                         top: 4,
                         left: 6,
-                        child: const Text(
+                        child: Text(
                           '*',
                           style: TextStyle(
                             fontSize: 18,
@@ -804,6 +825,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
   }
+
+  // ── Overdue info bar ─────────────────────────────────────────────────────
 
   Widget _buildOverdueInfoBar(List<dynamic> dailyTasks, String dateKey) {
     final totalOverdue = countOverdueTasks(dailyTasks);
@@ -855,6 +878,9 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     );
   }
 
+  // ── Tasks sliver ─────────────────────────────────────────────────────────
+  // تعديل: أضيف examDateKey و folderName لعرض كارد الاختبار
+
   Widget _buildTasksSliver(
     List<dynamic> dailyTasks,
     String dateKey,
@@ -878,6 +904,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     final dayData = revisionPlanDayBucketForDate(dailyTasks, dateKey);
     final tasks = dayData?['tasks'] as List<dynamic>? ?? [];
 
+    // هل اليوم المحدد فيه اختبار؟
     final isExamDay = examDateKey != null && examDateKey == dateKey;
 
     if (tasks.isEmpty && !isExamDay) {
@@ -905,6 +932,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
+            // الكارد الأول هو كارد الاختبار إذا اليوم فيه اختبار
             if (isExamDay && index == 0) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -917,9 +945,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
             final isCompleted = task['completed'] == true;
             final isOverdue = _isDateBeforeToday(selectedDate) && !isCompleted;
             final isRescheduled = task['rescheduled'] == true;
-
-            final taskTitle = task['title']?.toString() ?? '';
-            final taskPages = task['pages']?.toString() ?? '';
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -942,16 +967,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
                     }
                   }
                 },
-                onTakeQuiz: () => _processQuizGeneration(
-                  title: taskTitle,
-                  folder: planData['folderName'] ?? 'Course',
-                  pdfName: task['fileName']?.toString() ?? '',
-                  pages: taskPages,
-                  taskDocId: widget.planId,
-                  taskId: task['taskId']?.toString() ?? '',
-                  dateKey: dateKey,
-                  fullDailyTasks: dailyTasks,
-                ),
               ),
             );
           },
@@ -960,6 +975,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
   }
+
+  // ── Exam Card ────────────────────────────────────────────────────────────
 
   Widget _buildExamCard(String folderName) {
     return Container(
@@ -996,6 +1013,8 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       ),
     );
   }
+
+  // ── Reschedule overdue ───────────────────────────────────────────────────
 
   Future<void> _rescheduleOverdue(
       Map<String, dynamic> planData, List<dynamic> dailyTasks) async {
@@ -1056,7 +1075,7 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
     if (!placed && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text(
+          content: Text(
             'Some overdue tasks could not be placed. Check later days or try again.',
           ),
           backgroundColor: Colors.deepOrange.shade800,
@@ -1121,72 +1140,6 @@ class _InlinePlanDetailViewState extends State<_InlinePlanDetailView> {
       }
     }
   }
-
-  Future<void> _processQuizGeneration({
-    required String title,
-    required String folder,
-    required String pdfName,
-    required String pages,
-    required String taskDocId,
-    required String taskId,
-    required String dateKey,
-    required List fullDailyTasks,
-  }) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                'Generating quiz for "$title"...',
-                style: const TextStyle(fontSize: 14),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final quiz = await TaskQuizService.generateTaskQuiz(
-        taskTitle: title,
-        subject: folder,
-        topic: pages.isNotEmpty ? 'Pages: $pages' : null,
-        materialTitle: pdfName.isNotEmpty ? pdfName : null,
-      );
-
-      if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
-
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => QuizPage(
-            quiz: quiz,
-            onExit: () => Navigator.pop(context),
-            taskDocId: taskDocId,
-            taskId: taskId,
-            dateKey: dateKey,
-            fullDailyTasks: fullDailyTasks,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error generating quiz: $e'),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-    }
-  }
 }
 
 // ─────────────────────────────────────────
@@ -1204,7 +1157,6 @@ class _TaskCard extends StatelessWidget {
   final List<dynamic> dailyTasks;
   final Map<String, dynamic> planData;
   final void Function(DateTime toDate) onMoved;
-  final VoidCallback onTakeQuiz;
 
   const _TaskCard({
     required this.task,
@@ -1217,7 +1169,6 @@ class _TaskCard extends StatelessWidget {
     required this.dailyTasks,
     required this.planData,
     required this.onMoved,
-    required this.onTakeQuiz,
   });
 
   bool _isSameDay(DateTime a, DateTime b) =>
@@ -1228,6 +1179,40 @@ class _TaskCard extends StatelessWidget {
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+
+  Future<void> _toggleCompletion(BuildContext context) async {
+    try {
+      final planRef =
+          FirebaseFirestore.instance.collection('revisionPlans').doc(planId);
+      final snap = await planRef.get();
+      if (!snap.exists) return;
+      final data = snap.data()!;
+      final raw = data['dailyTasks'];
+      final wasString = raw is String;
+      List<dynamic> tasks =
+          wasString ? jsonDecode(raw) : List<dynamic>.from(raw ?? []);
+
+      for (var i = 0; i < tasks.length; i++) {
+        final day = tasks[i];
+        final dayDate = DateTime.tryParse(day['date']?.toString() ?? '');
+        if (dayDate != null && _isSameDay(dayDate, selectedDate)) {
+          final dayTasks = List<dynamic>.from(day['tasks']);
+          if (taskIndex < dayTasks.length) {
+            dayTasks[taskIndex]['completed'] = !isCompleted;
+            tasks[i]['tasks'] = dayTasks;
+            break;
+          }
+        }
+      }
+
+      await planRef.update({
+        'dailyTasks': wasString ? jsonEncode(tasks) : tasks,
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not update task: $e')));
+    }
   }
 
   Future<void> _pickAndMove(BuildContext context) async {
@@ -1321,6 +1306,8 @@ class _TaskCard extends StatelessWidget {
     final fileName = task['fileName']?.toString() ?? '';
     final pages = task['pages']?.toString() ?? '';
 
+    const greenCheck = Color(0xFF52C41A);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
@@ -1353,6 +1340,30 @@ class _TaskCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          GestureDetector(
+            onTap: () => _toggleCompletion(context),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: isCompleted ? greenCheck : Colors.black87,
+                    width: isCompleted ? 2 : 1,
+                  ),
+                ),
+                child: isCompleted
+                    ? const Center(
+                        child: Icon(Icons.check, size: 16, color: greenCheck),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1465,70 +1476,29 @@ class _TaskCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    SizedBox(
-                      height: 28,
-                      child: ElevatedButton(
-                        onPressed: isCompleted
-                            ? null
-                            : () async {
-                                final startQuiz = await showDialog<bool>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: const Row(
-                                      children: [
-                                        Icon(Icons.quiz, color: Color(0xFF7C3AED)),
-                                        SizedBox(width: 10),
-                                        Text('Ready for your Quiz?',
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    content: const Text(
-                                      'To mark this task as completed, you must pass this quiz with a score of 80% or higher.\n\nGood luck!',
-                                      style: TextStyle(
-                                          fontSize: 15, height: 1.4),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('Cancel',
-                                            style:
-                                                TextStyle(color: Colors.grey)),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                const Color(0xFF7C3AED)),
-                                        child: const Text('Start Quiz',
-                                            style: TextStyle(
-                                                color: Colors.white)),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                if (startQuiz == true) {
-                                  onTakeQuiz();
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7C3AED),
-                          disabledBackgroundColor: Colors.grey.shade300,
+                    const SizedBox(width: 6),
+                    Material(
+                      color: isCompleted
+                          ? const Color(0xFF52C41A)
+                          : const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        onTap: () {
+                          // TODO: connect quiz page
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 0),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6)),
-                        ),
-                        child: Text(
-                          'Quiz',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isCompleted ? Colors.grey : Colors.white,
+                              horizontal: 12, vertical: 6),
+                          child: Text(
+                            'Take Quiz',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isCompleted
+                                  ? Colors.white
+                                  : Colors.grey.shade600,
+                            ),
                           ),
                         ),
                       ),
@@ -1586,6 +1556,7 @@ class RevisionPlansListStream extends StatelessWidget {
     super.key,
   });
 
+  // Helper to cleanly update the single status field in Firestore
   Future<void> _updatePlanStatus(String docId, String newStatus) async {
     try {
       await FirebaseFirestore.instance
@@ -1625,6 +1596,7 @@ class RevisionPlansListStream extends StatelessWidget {
               ? rawDate.toDate()
               : DateTime.parse(rawDate.toString());
 
+          // 1. Calculate user task completion metrics
           int totalTasks = 0;
           int completedTasks = 0;
           final rawTasks = data['dailyTasks'];
@@ -1646,22 +1618,25 @@ class RevisionPlansListStream extends StatelessWidget {
               totalTasks > 0 && (completedTasks == totalTasks);
           final bool isExamDatePassed = !examDate.isAfter(now);
 
-          String resolvedStatus = "ongoing";
+          // 2. Resolve the true state based on your 3 criteria
+          String resolvedStatus = "ongoing"; // Default state #3
 
           if (isAllTasksFinished) {
-            resolvedStatus = "completed";
+            resolvedStatus = "completed"; // State #2
           } else if (isExamDatePassed) {
-            resolvedStatus = "Passed";
+            resolvedStatus = "Passed"; // State #1
           }
 
+          // 3. Sync with Firestore silently if it changed or if n8n forced 'completed' incorrectly
           if (currentStatus != resolvedStatus) {
             _updatePlanStatus(doc.id, resolvedStatus);
           }
 
+          // 4. Group into Active vs History buckets for the UI layout
           if (isExamDatePassed || resolvedStatus == "completed") {
-            passedPlans.add(doc);
+            passedPlans.add(doc); // Goes to historical/passed plans section
           } else {
-            activePlans.add(doc);
+            activePlans.add(doc); // Stays in active views
           }
         }
 
